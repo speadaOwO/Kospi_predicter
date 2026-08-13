@@ -1,7 +1,3 @@
-# Kospi_predicter
-this repository will have kospi-predicting-ai code
-
-# Let's create a nicely formatted Markdown file as requested by the user.
 md_content = """# 📈 KOSPI 예측 모델 개발 프로젝트 계획서
 
 > **프로젝트 목표:** 다양한 금융 수치 지표와 텍스트(뉴스) 감성 분석을 결합하여 PyTorch Transformer 기반의 KOSPI 단기/중기 예측 모델을 개발합니다.
@@ -70,8 +66,3 @@ md_content = """# 📈 KOSPI 예측 모델 개발 프로젝트 계획서
 - [ ] **Phase 5: 문서화 및 배포**
   * GitHub 레포지토리 구축 및 README 작성
 """
-
-with open("kospi_project_plan.md", "w", encoding="utf-8") as f:
-    f.write(md_content)
-
-print("Markdown file created successfully.")
