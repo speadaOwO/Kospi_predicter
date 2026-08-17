@@ -64,3 +64,11 @@
 - [ ] **Phase 5: 문서화 및 배포**
   * GitHub 레포지토리 구축 및 README 작성
 """
+
+---
+
+# How to Download Data
+
+1. **src폴더** 들어가기
+2. **download.py** 실행하기  
+### repository clone 을 진행할것!
