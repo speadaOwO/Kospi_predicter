@@ -67,8 +67,9 @@
 
 ---
 
-# How to Download Data
-
-1. **src폴더** 들어가기
-2. **download.py** 실행하기  
-### repository clone 을 진행할것!
+# How to Use ( 이때까지 한거만 )
+**이 리포지토리를 다운로드 하거나 clone 하세요(github desktop 를 권장드립니다)**
+  * download.py 를 실행
+  * process.py 를 실행
+  * Data.py 를 실행
+하시면 아마도 X_train.npy , y_train.npy 가 data/processed 에 생길겁니다
