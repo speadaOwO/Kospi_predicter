@@ -73,3 +73,5 @@
   * preprocess.py 를 실행
   * dataset.py 를 실행
 하시면 아마도 X_train.npy , y_train.npy 가 data/processed 에 생길겁니다
+
+# testtest
