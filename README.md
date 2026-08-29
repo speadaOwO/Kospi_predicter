@@ -69,9 +69,10 @@
 
 ## How to Use (이때까지한거만)
 **이 리포지토리를 다운로드 하거나 clone 하세요(github desktop 를 권장드립니다)**
+# USE YFINANCE 1.7.0 last release
   * download.py 를 실행
   * preprocess.py 를 실행
   * dataset.py 를 실행
 하시면 아마도 X_train.npy , y_train.npy 가 data/processed 에 생길겁니다
 
-# testtest
+
