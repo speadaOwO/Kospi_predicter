@@ -286,3 +286,10 @@ direction_accuracy = (
 ).mean()
 
 print(f"Direction Accuracy: {direction_accuracy * 100:.2f}%")
+
+always_up_accuracy = (actuals > 0).mean()
+always_down_accuracy = (actuals < 0).mean()
+
+print(f"Always Up Accuracy: {always_up_accuracy * 100:.2f}%")
+print(f"Always Down Accuracy: {always_down_accuracy * 100:.2f}%")
+print(f"Transformer Accuracy: {direction_accuracy * 100:.2f}%")
