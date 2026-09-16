@@ -12,7 +12,7 @@ from sklearn.preprocessing import StandardScaler
 INPUT_PATH = "data/raw/data.csv"
 OUTPUT_DIR = "data/processed"
 
-WINDOW_SIZE = 30
+WINDOW_SIZE = 60
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 

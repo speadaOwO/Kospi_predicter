@@ -4,7 +4,7 @@ import pykrx as pk
 from pykrx import stock
 
 
-start = "2010-01-01"
+start = "2003-01-01"
 end= "2026-9-14"
 
 tickers = {
@@ -27,7 +27,7 @@ df = kospi.join(macro , how = "inner")
 
 
 value = stock.get_market_trading_value_by_date(
-    "20100101",
+    "20030101",
     "20260914",
     "KOSPI"
 )
@@ -36,7 +36,7 @@ value = stock.get_market_trading_value_by_date(
 
 
 volume = stock.get_market_trading_volume_by_date(
-    "20100101",
+    "20030101",
     "20260914",
     "KOSPI"
 )
