@@ -1,31 +1,73 @@
 import pandas as pd
 import yfinance as yf
+import pykrx as pk
+from pykrx import stock
+
+
 start = "2010-01-01"
-end= "2026-8-16"
-kospi = yf.download("^KS11" , start=start,end=end, auto_adjust=False)
-SP500 = yf.download("^GSPC",start=start , end=end, auto_adjust=False)
-NASDAQ = yf.download("^IXIC",start=start , end=end, auto_adjust=False)
-SOX = yf.download("^SOX",start=start , end=end, auto_adjust=False)
-VIX = yf.download("^VIX",start=start , end=end, auto_adjust=False)
-USDKRW = yf.download("KRW=X",start=start , end=end, auto_adjust=False)
-y10us = yf.download("^TNX",start=start , end=end, auto_adjust=False)
+end= "2026-9-14"
+
+tickers = {
+    "KOSPI": "^KS11",
+    "S&P500": "^GSPC",
+    "NASDAQ": "^IXIC",
+    "SOX": "^SOX",
+    "USD/KRW": "KRW=X",
+    "VIX": "^VIX",
+    "WTI": "CL=F",
+    "US10Y": "^TNX",
+}
+
+kospi = yf.download("^KS11" , start=start,end=end, auto_adjust=False, multi_level_index=False)
+
+macro  = yf.download(list(tickers.values())[1:], start=start,end=end , auto_adjust=False, multi_level_index=False)["Close"]
+
+df = kospi.join(macro , how = "inner")
 
 
 
-kospi.columns = kospi.columns.get_level_values(0)
-SP500.columns = SP500.columns.get_level_values(0)
-NASDAQ.columns = NASDAQ.columns.get_level_values(0)
-SOX.columns = SOX.columns.get_level_values(0)
-VIX.columns = VIX.columns.get_level_values(0)
-USDKRW.columns = USDKRW.columns.get_level_values(0)
-y10us.columns = y10us.columns.get_level_values(0)
+value = stock.get_market_trading_value_by_date(
+    "20100101",
+    "20260914",
+    "KOSPI"
+)
 
 
 
-kospi.to_csv("data/raw/kospi.csv")
-SP500.to_csv("data/raw/SP500.csv")
-NASDAQ.to_csv("data/raw/NASDAQ.csv")
-SOX.to_csv("data/raw/SOX.csv")
-VIX.to_csv("data/raw/VIX.csv")
-USDKRW.to_csv("data/raw/USDKRW.csv")
-y10us.to_csv("data/raw/y10us.csv")
+
+volume = stock.get_market_trading_volume_by_date(
+    "20100101",
+    "20260914",
+    "KOSPI"
+)
+
+
+value = value.rename(columns={
+    "기관합계": "institution_net_value",
+    "개인": "retail_net_value",
+    "외국인합계": "foreign_net_value",
+    "기타법인" : "other_net_value",
+    "전체" : "all_net_value",
+})
+
+volume = volume.rename(columns={
+    "기관합계": "institution_net_volume",
+    "개인": "retail_net_volume",
+    "외국인합계": "foreign_net_volume",
+    "기타법인" : "other_net_volume",
+    "전체" : "all_net_volume",
+})
+
+
+df = df.join(value, how="inner")
+df = df.join(volume, how="inner")
+
+
+print(df.columns )
+
+df.to_csv("data/raw/data.csv")
+
+
+
+
+

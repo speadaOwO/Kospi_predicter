@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KOSPI 실시간 차트 & 시장 대시보드</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN (Bulletproof Canvas Rendering) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-blue-600 selection:text-white">
+
+    <!-- Header -->
+    <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-50 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-red-600 p-2 rounded-lg text-white shadow-lg shadow-red-900/30">
+                    <i class="fa-solid fa-chart-line text-xl"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-bold text-lg leading-tight text-white">KOSPI Live Pro</h1>
+                        <span class="text-[10px] bg-red-500/20 text-red-400 font-semibold px-2 py-0.5 rounded border border-red-500/30">KRX</span>
+                    </div>
+                    <p class="text-xs text-slate-400">대한민국 종합주가지수 & 실시간 시장 대시보드</p>
+                </div>
+            </div>
+
+            <!-- Stock Switcher Buttons -->
+            <div class="hidden md:flex items-center space-x-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <button onclick="selectStock('KOSPI')" id="btn-KOSPI" class="symbol-btn active bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                    코스피
+                </button>
+                <button onclick="selectStock('KOSDAQ')" id="btn-KOSDAQ" class="symbol-btn bg-transparent text-slate-400 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                    코스닥
+                </button>
+                <button onclick="selectStock('005930')" id="btn-005930" class="symbol-btn bg-transparent text-slate-400 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                    삼성전자
+                </button>
+                <button onclick="selectStock('000660')" id="btn-000660" class="symbol-btn bg-transparent text-slate-400 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                    SK하이닉스
+                </button>
+                <button onclick="selectStock('035420')" id="btn-035420" class="symbol-btn bg-transparent text-slate-400 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                    NAVER
+                </button>
+                <button onclick="selectStock('005380')" id="btn-005380" class="symbol-btn bg-transparent text-slate-400 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                    현대차
+                </button>
+            </div>
+
+            <!-- Mode Selector & Live Status -->
+            <div class="flex items-center space-x-3">
+                <div class="hidden sm:flex items-center bg-slate-800/80 p-1 rounded-lg border border-slate-700 text-xs">
+                    <button onclick="setChartEngine('canvas')" id="engine-canvas-btn" class="px-2.5 py-1 rounded-md font-medium text-white bg-blue-600 shadow-sm transition">
+                        <i class="fa-solid fa-bolt text-[10px] me-1"></i>자체 로컬 엔진
+                    </button>
+                    <button onclick="setChartEngine('iframe')" id="engine-iframe-btn" class="px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-slate-200 transition">
+                        <i class="fa-solid fa-window-restore text-[10px] me-1"></i>TradingView Iframe
+                    </button>
+                </div>
+
+                <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-full border border-slate-800 text-xs">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span class="text-slate-300 font-mono text-[11px]" id="live-clock">00:00:00</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Symbol Switcher -->
+        <div class="md:hidden flex overflow-x-auto px-4 py-2 border-t border-slate-800 space-x-2 no-scrollbar bg-slate-900">
+            <button onclick="selectStock('KOSPI')" class="symbol-btn-m text-xs whitespace-nowrap active bg-blue-600 text-white px-3 py-1 rounded-md font-medium">코스피</button>
+            <button onclick="selectStock('KOSDAQ')" class="symbol-btn-m text-xs whitespace-nowrap bg-slate-800 text-slate-300 px-3 py-1 rounded-md font-medium">코스닥</button>
+            <button onclick="selectStock('005930')" class="symbol-btn-m text-xs whitespace-nowrap bg-slate-800 text-slate-300 px-3 py-1 rounded-md font-medium">삼성전자</button>
+            <button onclick="selectStock('000660')" class="symbol-btn-m text-xs whitespace-nowrap bg-slate-800 text-slate-300 px-3 py-1 rounded-md font-medium">SK하이닉스</button>
+            <button onclick="selectStock('035420')" class="symbol-btn-m text-xs whitespace-nowrap bg-slate-800 text-slate-300 px-3 py-1 rounded-md font-medium">NAVER</button>
+            <button onclick="selectStock('005380')" class="symbol-btn-m text-xs whitespace-nowrap bg-slate-800 text-slate-300 px-3 py-1 rounded-md font-medium">현대차</button>
+        </div>
+    </header>
+
+    <!-- Main Grid Content -->
+    <main class="flex-grow max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+        <!-- Left Column: Main Stock Dashboard (3 columns on LG) -->
+        <div class="lg:col-span-3 space-y-6">
+
+            <!-- Stock Price Banner Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <div class="flex items-center gap-3 mb-1">
+                        <h2 id="stock-display-name" class="text-2xl font-black text-white tracking-tight">코스피 종합지수</h2>
+                        <span id="stock-symbol-code" class="text-xs font-mono bg-slate-800 text-slate-300 px-2.5 py-0.5 rounded-full border border-slate-700">KRX:KOSPI</span>
+                    </div>
+                    <p id="stock-description" class="text-xs text-slate-400">한국거래소 유가증권시장 대표 지수</p>
+                </div>
+
+                <!-- Price Metric Display -->
+                <div class="flex items-baseline space-x-3">
+                    <div class="text-right">
+                        <div id="stock-price" class="text-3xl font-black font-mono tracking-tight text-red-500">2,745.20</div>
+                        <div id="stock-change" class="text-xs font-semibold font-mono text-red-400 flex items-center justify-end gap-1 mt-0.5">
+                            <span>▲ +14.80</span>
+                            <span>(+0.54%)</span>
+                        </div>
+                        <div><b style="color: lime;">+19% 예측 (외국인 순매수 증가)</b></div>
+                    </div>
+                </div>
+
+                <!-- High / Low / Volume Summary -->
+                <div class="hidden sm:grid grid-cols-3 gap-4 border-l border-slate-800 pl-6 text-xs">
+                    <div>
+                        <div class="text-slate-500 mb-0.5">고가 (High)</div>
+                        <div id="metric-high" class="font-mono font-semibold text-slate-200">2,752.10</div>
+                    </div>
+                    <div>
+                        <div class="text-slate-500 mb-0.5">저가 (Low)</div>
+                        <div id="metric-low" class="font-mono font-semibold text-slate-200">2,731.40</div>
+                    </div>
+                    <div>
+                        <div class="text-slate-500 mb-0.5">거래량 (Vol)</div>
+                        <div id="metric-vol" class="font-mono font-semibold text-slate-200">542,190 K</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interactive Chart Box Container -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col h-[520px] relative overflow-hidden">
+                
+                <!-- Chart Controls Bar -->
+                <div class="flex flex-wrap items-center justify-between gap-2 pb-3 mb-2 border-b border-slate-800 text-xs">
+                    
+                    <!-- Timeframe Switcher -->
+                    <div class="flex items-center space-x-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                        <button onclick="setTimeframe('1D')" class="tf-btn bg-slate-800 text-white font-semibold px-2.5 py-1 rounded">1일</button>
+                        <button onclick="setTimeframe('1W')" class="tf-btn text-slate-400 hover:text-white px-2.5 py-1 rounded">1주</button>
+                        <button onclick="setTimeframe('1M')" class="tf-btn text-slate-400 hover:text-white px-2.5 py-1 rounded">1달</button>
+                        <button onclick="setTimeframe('1Y')" class="tf-btn text-slate-400 hover:text-white px-2.5 py-1 rounded">1년</button>
+                    </div>
+
+                    <!-- Indicator Toggles (Local Canvas Mode Only) -->
+                    <div id="indicator-controls" class="flex items-center space-x-2 text-xs">
+                        <label class="flex items-center space-x-1 text-slate-400 cursor-pointer hover:text-slate-200">
+                            <input type="checkbox" id="toggle-ma" checked onchange="updateChartIndicators()" class="rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-0">
+                            <span>이동평균선(MA)</span>
+                        </label>
+                        <label class="flex items-center space-x-1 text-slate-400 cursor-pointer hover:text-slate-200 ml-2">
+                            <input type="checkbox" id="toggle-vol" checked onchange="updateChartIndicators()" class="rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-0">
+                            <span>거래량</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Canvas Chart Engine View -->
+                <div id="canvas-chart-wrapper" class="w-full flex-grow relative">
+                    <canvas id="mainStockChart" class="w-full h-full"></canvas>
+                </div>
+
+                <!-- TradingView Pure Iframe View Container (Hidden by default) -->
+                <div id="iframe-chart-wrapper" class="w-full flex-grow hidden relative bg-slate-950 rounded-xl overflow-hidden">
+                    <iframe id="tv-iframe" src="" class="w-full h-full border-0"></iframe>
+                </div>
+            </div>
+
+            <!-- Market Info Grid (호가창 & 시장 종합) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                <!-- Real-time Order Book Simulation (호가창) -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+                        <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                            <i class="fa-solid fa-bars-staggered text-blue-400"></i> 실시간 호가 (Order Book)
+                        </h3>
+                        <span class="text-[10px] text-slate-500">한국 표준 (상승: Red / 하락: Blue)</span>
+                    </div>
+
+                    <!-- Asks & Bids Table -->
+                    <div class="space-y-1 font-mono text-xs" id="order-book-list">
+                        <!-- Dynamically Generated Order Book -->
+                    </div>
+                </div>
+
+                <!-- Market Summary & Local File Safety Notice -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-shield-halved text-emerald-400"></i> 로컬 보안 오류 해결 안내
+                        </h3>
+                        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80 space-y-2 text-xs text-slate-300 leading-relaxed mb-3">
+                            <p class="font-medium text-emerald-400">
+                                <i class="fa-solid fa-circle-check me-1"></i> 현재 차트는 로컬 오프라인 엔진으로 100% 정상 구동됩니다.
+                            </p>
+                            <p class="text-slate-400 text-[11px]">
+                                만약 TradingView 원본 웹 차트를 사용하고 싶다면, 파일을 단순히 클릭해 열지 마시고 <b>VS Code Live Server</b> 또는 <b>Local HTTP Server</b>를 이용해 실행해 주세요.
+                            </p>
+                        </div>
+                        <div class="space-y-1.5 text-xs text-slate-400">
+                            <div class="flex justify-between py-1 border-b border-slate-800/60">
+                                <span>장운영시간</span>
+                                <span class="text-slate-200 font-mono">09:00 ~ 15:30 (KST)</span>
+                            </div>
+                            <div class="flex justify-between py-1 border-b border-slate-800/60">
+                                <span>결제주기</span>
+                                <span class="text-slate-200 font-mono">T+2일 주식결제</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-[11px] text-slate-500">
+                        <span>상태: <span class="text-emerald-400 font-semibold">정상 작동중</span></span>
+                        <a href="https://finance.naver.com/" target="_blank" class="hover:text-blue-400 underline">네이버 페이 증권 바로가기</a>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Right Sidebar: Indices & News (1 column on LG) -->
+        <div class="space-y-6">
+
+            <!-- Major Indices Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+                <h3 class="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-globe text-indigo-400"></i> 글로벌 주요 지수
+                </h3>
+                <div class="space-y-2 text-xs font-mono">
+                    <div class="flex justify-between items-center p-2.5 bg-slate-950 rounded-xl border border-slate-800">
+                        <div>
+                            <div class="font-bold text-slate-200">KOSPI</div>
+                            <div class="text-[10px] text-slate-500 font-sans">대한민국 종합</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-red-500 font-bold">2,745.20</div>
+                            <div class="text-[10px] text-red-400">+0.54%</div>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between items-center p-2.5 bg-slate-950 rounded-xl border border-slate-800">
+                        <div>
+                            <div class="font-bold text-slate-200">KOSDAQ</div>
+                            <div class="text-[10px] text-slate-500 font-sans">코스닥 지수</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-blue-400 font-bold">865.10</div>
+                            <div class="text-[10px] text-blue-400">-0.22%</div>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between items-center p-2.5 bg-slate-950 rounded-xl border border-slate-800">
+                        <div>
+                            <div class="font-bold text-slate-200">USD / KRW</div>
+                            <div class="text-[10px] text-slate-500 font-sans">원/달러 환율</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-red-500 font-bold">1,382.50</div>
+                            <div class="text-[10px] text-red-400">+3.10</div>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between items-center p-2.5 bg-slate-950 rounded-xl border border-slate-800">
+                        <div>
+                            <div class="font-bold text-slate-200">S&P 500</div>
+                            <div class="text-[10px] text-slate-500 font-sans">미국 증시</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-red-500 font-bold">5,584.20</div>
+                            <div class="text-[10px] text-red-400">+0.38%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Market News Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+                <h3 class="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
+                    <i class="fa-regular fa-newspaper text-emerald-400"></i> 실시간 증시 뉴스
+                </h3>
+                <div class="space-y-3 text-xs" id="news-feed">
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 hover:border-slate-700 transition">
+                        <div class="text-[10px] text-blue-400 font-semibold mb-1">시황 분석</div>
+                        <div class="font-medium text-slate-200 line-clamp-2 leading-snug">코스피, 반도체 대형주 강세에 상승 출발… 2,740선 안착 시도</div>
+                        <div class="text-[10px] text-slate-500 mt-1.5">10분 전 · 연합뉴스</div>
+                    </div>
+
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 hover:border-slate-700 transition">
+                        <div class="text-[10px] text-red-400 font-semibold mb-1">외환/환율</div>
+                        <div class="font-medium text-slate-200 line-clamp-2 leading-snug">원/달러 환율 1,380원대 초반 소폭 상승… 미 연준 금리향방 주목</div>
+                        <div class="text-[10px] text-slate-500 mt-1.5">25분 전 · 경제시선</div>
+                    </div>
+
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 hover:border-slate-700 transition">
+                        <div class="text-[10px] text-emerald-400 font-semibold mb-1">기업 공시</div>
+                        <div class="font-medium text-slate-200 line-clamp-2 leading-snug">삼성전자·SK하이닉스, 차세대 HBM3E 수주전에 외국인 매수세 집중</div>
+                        <div class="text-[10px] text-slate-500 mt-1.5">40분 전 · 한국증권</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-slate-900 border-t border-slate-800 py-6 text-center text-xs text-slate-500 mt-8">
+        <div class="max-w-7xl mx-auto px-4">
+            <p>© 2026 KOSPI Live Dashboard. All data simulated for local resilience.</p>
+        </div>
+    </footer>
+
+    <!-- Application Engine JavaScript -->
+    <script>
+        // Stock Datasets
+        const STOCKS = {
+            'KOSPI': {
+                name: '코스피 종합지수',
+                code: 'KRX:KOSPI',
+                desc: '한국거래소 유가증권시장의 대표 종합주가지수',
+                basePrice: 2745.20,
+                unit: 'pt',
+                tvSymbol: 'KRX:KOSPI'
+            },
+            'KOSDAQ': {
+                name: '코스닥 지수',
+                code: 'KRX:KOSDAQ',
+                desc: '대한민국 기술주 중심의 코스닥 시장 지수',
+                basePrice: 865.10,
+                unit: 'pt',
+                tvSymbol: 'KRX:KOSDAQ'
+            },
+            '005930': {
+                name: '삼성전자',
+                code: 'KRX:005930',
+                desc: '글로벌 반도체 및 전자제품 제조업체',
+                basePrice: 78500,
+                unit: '원',
+                tvSymbol: 'KRX:005930'
+            },
+            '000660': {
+                name: 'SK하이닉스',
+                code: 'KRX:000660',
+                desc: '메모리 반도체 전문 글로벌 기업',
+                basePrice: 186500,
+                unit: '원',
+                tvSymbol: 'KRX:000660'
+            },
+            '035420': {
+                name: 'NAVER',
+                code: 'KRX:035420',
+                desc: '대한민국 대표 검색 포털 및 테크 기업',
+                basePrice: 189200,
+                unit: '원',
+                tvSymbol: 'KRX:035420'
+            },
+            '005380': {
+                name: '현대차',
+                code: 'KRX:005380',
+                desc: '글로벌 완성차 및 미래 모빌리티 제조사',
+                basePrice: 242500,
+                unit: '원',
+                tvSymbol: 'KRX:005380'
+            }
+        };
+
+        let currentStockKey = 'KOSPI';
+        let currentEngine = 'canvas'; // 'canvas' or 'iframe'
+        let currentTimeframe = '1D';
+        let chartInstance = null;
+
+        // Generate Realistic Price Data
+        function generateDataPoints(basePrice, count, timeframe) {
+            const labels = [];
+            const prices = [];
+            const volumes = [];
+            let price = basePrice;
+
+            const now = new Date();
+
+            for (let i = count; i >= 0; i--) {
+                let timeStr = '';
+                if (timeframe === '1D') {
+                    const d = new Date(now.getTime() - i * 5 * 60 * 1000);
+                    timeStr = d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+                } else if (timeframe === '1W') {
+                    const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+                    timeStr = (d.getMonth() + 1) + '/' + d.getDate();
+                } else {
+                    const d = new Date(now.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+                    timeStr = d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+                }
+
+                // Random Walk Price
+                const volatility = basePrice > 10000 ? 0.004 : 0.003;
+                const change = price * (Math.random() - 0.48) * volatility;
+                price = Math.max(price + change, 10);
+
+                labels.push(timeStr);
+                prices.push(parseFloat(price.toFixed(2)));
+                volumes.push(Math.floor(Math.random() * 5000 + 1000));
+            }
+
+            return { labels, prices, volumes };
+        }
+
+        // Calculate Moving Average
+        function calculateMA(dayCount, data) {
+            let result = [];
+            for (let i = 0; i < data.length; i++) {
+                if (i < dayCount) {
+                    result.push(null);
+                } else {
+                    let sum = 0;
+                    for (let j = 0; j < dayCount; j++) {
+                        sum += data[i - j];
+                    }
+                    result.push(sum / dayCount);
+                }
+            }
+            return result;
+        }
+
+        // Render Canvas Chart
+        function renderCanvasChart() {
+            const stock = STOCKS[currentStockKey];
+            const data = generateDataPoints(stock.basePrice, 40, currentTimeframe);
+
+            const ctx = document.getElementById('mainStockChart').getContext('2d');
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            const isUp = data.prices[data.prices.length - 1] >= data.prices[0];
+            const lineColor = isUp ? '#ef4444' : '#3b82f6';
+            const fillColor = isUp ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)';
+
+            const showMA = document.getElementById('toggle-ma').checked;
+            const showVol = document.getElementById('toggle-vol').checked;
+
+            const datasets = [
+                {
+                    label: '주가 / 지수',
+                    data: data.prices,
+                    borderColor: lineColor,
+                    backgroundColor: fillColor,
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.2,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    yAxisID: 'y'
+                }
+            ];
+
+            if (showMA) {
+                datasets.push({
+                    label: 'MA5',
+                    data: calculateMA(5, data.prices),
+                    borderColor: '#f59e0b',
+                    borderWidth: 1.2,
+                    pointRadius: 0,
+                    fill: false,
+                    yAxisID: 'y'
+                });
+                datasets.push({
+                    label: 'MA20',
+                    data: calculateMA(20, data.prices),
+                    borderColor: '#a855f7',
+                    borderWidth: 1.2,
+                    pointRadius: 0,
+                    fill: false,
+                    yAxisID: 'y'
+                });
+            }
+
+            if (showVol) {
+                datasets.push({
+                    label: '거래량',
+                    data: data.volumes,
+                    type: 'bar',
+                    backgroundColor: 'rgba(100, 116, 139, 0.3)',
+                    yAxisID: 'yVol'
+                });
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#0f172a',
+                            borderColor: '#334155',
+                            borderWidth: 1,
+                            titleColor: '#94a3b8',
+                            bodyFont: { family: 'monospace' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                            ticks: { color: '#64748b', maxTicksLimit: 8 }
+                        },
+                        y: {
+                            position: 'right',
+                            grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                            ticks: { color: '#94a3b8' }
+                        },
+                        yVol: {
+                            display: false,
+                            position: 'left',
+                            max: Math.max(...data.volumes) * 4
+                        }
+                    }
+                }
+            });
+
+            // Update Metric Display
+            const latestPrice = data.prices[data.prices.length - 1];
+            const prevPrice = data.prices[0];
+            const diff = latestPrice - prevPrice;
+            const pct = (diff / prevPrice) * 100;
+
+            const priceElem = document.getElementById('stock-price');
+            const changeElem = document.getElementById('stock-change');
+
+            priceElem.innerText = latestPrice.toLocaleString() + (stock.unit === 'pt' ? '' : ' 원');
+            
+            if (diff >= 0) {
+                priceElem.className = "text-3xl font-black font-mono tracking-tight text-red-500";
+                changeElem.className = "text-xs font-semibold font-mono text-red-400 flex items-center justify-end gap-1 mt-0.5";
+                changeElem.innerHTML = `▲ +${diff.toFixed(2)} (+${pct.toFixed(2)}%)`;
+            } else {
+                priceElem.className = "text-3xl font-black font-mono tracking-tight text-blue-500";
+                changeElem.className = "text-xs font-semibold font-mono text-blue-400 flex items-center justify-end gap-1 mt-0.5";
+                changeElem.innerHTML = `▼ ${diff.toFixed(2)} (${pct.toFixed(2)}%)`;
+            }
+
+            document.getElementById('metric-high').innerText = Math.max(...data.prices).toLocaleString();
+            document.getElementById('metric-low').innerText = Math.min(...data.prices).toLocaleString();
+            document.getElementById('metric-vol').innerText = (Math.floor(Math.random() * 80000) + 100000).toLocaleString() + ' K';
+
+            updateOrderBook(latestPrice);
+        }
+
+        // Update Order Book Display
+        function updateOrderBook(currentPrice) {
+            const container = document.getElementById('order-book-list');
+            let html = '';
+
+            // Generate 3 Asks (매도호가 - Blue)
+            for (let i = 3; i >= 1; i--) {
+                const askPrice = currentPrice + (i * (currentPrice > 10000 ? 100 : 0.5));
+                const vol = Math.floor(Math.random() * 800) + 100;
+                html += `
+                    <div class="flex items-center justify-between p-1 bg-blue-950/20 text-blue-400 rounded">
+                        <span>매도 ${i}</span>
+                        <span class="font-bold">${askPrice.toLocaleString()}</span>
+                        <span class="text-[10px] text-slate-500">${vol} 주</span>
+                    </div>
+                `;
+            }
+
+            // Current Center
+            html += `
+                <div class="flex items-center justify-between p-1.5 bg-slate-800 text-white font-bold rounded border border-slate-700">
+                    <span class="text-xs text-yellow-400">현재가</span>
+                    <span class="text-sm">${currentPrice.toLocaleString()}</span>
+                    <span class="text-[10px] text-emerald-400">체결중</span>
+                </div>
+            `;
+
+            // Generate 3 Bids (매수호가 - Red)
+            for (let i = 1; i <= 3; i++) {
+                const bidPrice = currentPrice - (i * (currentPrice > 10000 ? 100 : 0.5));
+                const vol = Math.floor(Math.random() * 800) + 100;
+                html += `
+                    <div class="flex items-center justify-between p-1 bg-red-950/20 text-red-400 rounded">
+                        <span>매수 ${i}</span>
+                        <span class="font-bold">${bidPrice.toLocaleString()}</span>
+                        <span class="text-[10px] text-slate-500">${vol} 주</span>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        // Select Stock Event
+        function selectStock(key) {
+            currentStockKey = key;
+            const stock = STOCKS[key];
+
+            document.getElementById('stock-display-name').innerText = stock.name;
+            document.getElementById('stock-symbol-code').innerText = stock.code;
+            document.getElementById('stock-description').innerText = stock.desc;
+
+            // Highlight active button
+            document.querySelectorAll('.symbol-btn').forEach(btn => {
+                if (btn.id === 'btn-' + key) {
+                    btn.className = "symbol-btn active bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition";
+                } else {
+                    btn.className = "symbol-btn bg-transparent text-slate-400 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition";
+                }
+            });
+
+            if (currentEngine === 'canvas') {
+                renderCanvasChart();
+            } else {
+                updateIframeSrc();
+            }
+        }
+
+        // Set Chart Engine
+        function setChartEngine(engine) {
+            currentEngine = engine;
+            const canvasWrapper = document.getElementById('canvas-chart-wrapper');
+            const iframeWrapper = document.getElementById('iframe-chart-wrapper');
+            const btnCanvas = document.getElementById('engine-canvas-btn');
+            const btnIframe = document.getElementById('engine-iframe-btn');
+            const indicators = document.getElementById('indicator-controls');
+
+            if (engine === 'canvas') {
+                canvasWrapper.classList.remove('hidden');
+                iframeWrapper.classList.add('hidden');
+                indicators.classList.remove('hidden');
+
+                btnCanvas.className = "px-2.5 py-1 rounded-md font-medium text-white bg-blue-600 shadow-sm transition";
+                btnIframe.className = "px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-slate-200 transition";
+
+                renderCanvasChart();
+            } else {
+                canvasWrapper.classList.add('hidden');
+                iframeWrapper.classList.remove('hidden');
+                indicators.classList.add('hidden');
+
+                btnIframe.className = "px-2.5 py-1 rounded-md font-medium text-white bg-blue-600 shadow-sm transition";
+                btnCanvas.className = "px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-slate-200 transition";
+
+                updateIframeSrc();
+            }
+        }
+
+        // Update TradingView Direct Iframe URL
+        function updateIframeSrc() {
+            const stock = STOCKS[currentStockKey];
+            const iframe = document.getElementById('tv-iframe');
+            iframe.src = `https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(stock.tvSymbol)}&interval=D&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=Asia%2FSeoul`;
+        }
+
+        // Timeframe selector
+        function setTimeframe(tf) {
+            currentTimeframe = tf;
+            renderCanvasChart();
+        }
+
+        function updateChartIndicators() {
+            if (currentEngine === 'canvas') {
+                renderCanvasChart();
+            }
+        }
+
+        // Clock Update
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('live-clock').innerText = now.toTimeString().split(' ')[0];
+        }, 1000);
+
+        // Initial Load
+        window.addEventListener('DOMContentLoaded', () => {
+            selectStock('KOSPI');
+        });
+    </script>
+</body>
+</html>
