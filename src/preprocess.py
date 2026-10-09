@@ -376,18 +376,16 @@ y_test = scaler_y.transform(
 # 18. Sequence 생성
 # =========================================================
 
+
 def make_sequences(X, y, window_size):
     X_seq = []
     y_seq = []
 
-    for i in range(len(X) - window_size):
-        X_seq.append(
-            X[i:i + window_size]
-        )
+    for i in range(len(X) - window_size + 1):
+        X_seq.append(X[i:i + window_size])
 
-        y_seq.append(
-            y[i + window_size]
-        )
+        # 입력 시퀀스 마지막 날의 다음 날 수익률
+        y_seq.append(y[i + window_size - 1])
 
     return np.array(X_seq), np.array(y_seq)
 
