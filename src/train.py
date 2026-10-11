@@ -1,295 +1,248 @@
+"""KOSPI next-day return - bare Transformer. Run: python src/train.py"""
+from __future__ import annotations
+import json, math, random, time, warnings
+from pathlib import Path
+from typing import Dict, Tuple
+
+import joblib
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
+from sklearn.metrics import accuracy_score, confusion_matrix, mean_absolute_error
 from torch.utils.data import DataLoader, TensorDataset
 
-
-# =========================
-# 1. 설정
-# =========================
-
-BATCH_SIZE = 32
-EPOCHS = 50
-LEARNING_RATE = 1e-3
-
+ROOT = Path(__file__).resolve().parents[1]
+DATA_DIR = ROOT / "data" / "processed"
+OUTPUT_DIR = DATA_DIR / "training_run"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-print("Device:", DEVICE)
+CONFIG = {
+    "seed": 42,
+    "epochs": 100,
+    "batch_size": 64,
+    "learning_rate": 3e-4,
+    "weight_decay": 1e-3,
+    "early_stopping_patience": 14,
+    "scheduler_patience": 4,
+    "min_learning_rate": 1e-6,
+    "gradient_clip_norm": 1.0,
+    "d_model": 32,
+    "nhead": 4,
+    "num_layers": 2,
+    "ff_dim": 64,
+    "dropout": 0.1,
+    "huber_delta": 1.0,
+    "num_workers": 0,
+    "use_amp": True,
+}
 
 
-# =========================
-# 2. 데이터 불러오기
-# =========================
-
-X_train = np.load("data/processed/X_train.npy")
-y_train = np.load("data/processed/y_train.npy")
-
-X_valid = np.load("data/processed/X_valid.npy")
-y_valid = np.load("data/processed/y_valid.npy")
-
-X_test = np.load("data/processed/X_test.npy")
-y_test = np.load("data/processed/y_test.npy")
-
-print("X_train:", X_train.shape)
-print("y_train:", y_train.shape)
-print("X_valid:", X_valid.shape)
-print("y_valid:", y_valid.shape)
-print("X_test :", X_test.shape)
-print("y_test :", y_test.shape)
+def set_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
-# =========================
-# 3. NumPy → PyTorch Tensor
-# =========================
-
-X_train = torch.tensor(X_train, dtype=torch.float32)
-y_train = torch.tensor(y_train, dtype=torch.float32)
-
-X_valid = torch.tensor(X_valid, dtype=torch.float32)
-y_valid = torch.tensor(y_valid, dtype=torch.float32)
-
-X_test = torch.tensor(X_test, dtype=torch.float32)
-y_test = torch.tensor(y_test, dtype=torch.float32)
+def load_split(name: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    X = np.load(DATA_DIR / f"X_{name}.npy").astype(np.float32)
+    y = np.load(DATA_DIR / f"y_{name}.npy").astype(np.float32).reshape(-1)
+    direction = np.load(DATA_DIR / f"y_{name}_direction.npy").astype(np.float32).reshape(-1)
+    print(f"{name}: X={X.shape}, y={y.shape}, up={direction.mean():.2%}")
+    return X, y, direction
 
 
-train_dataset = TensorDataset(X_train, y_train)
-valid_dataset = TensorDataset(X_valid, y_valid)
-test_dataset = TensorDataset(X_test, y_test)
-
-train_loader = DataLoader(
-    train_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=True
-)
-
-valid_loader = DataLoader(
-    valid_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=False
-)
-
-test_loader = DataLoader(
-    test_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=False
-)
+def load_zero_threshold() -> float:
+    path = DATA_DIR / "scaler_y.pkl"
+    if not path.exists():
+        return 0.0
+    scaler = joblib.load(path)
+    mean = float(scaler.mean_[0])
+    scale = float(scaler.scale_[0])
+    return -mean / scale
 
 
-# =========================
-# 4. Transformer 모델
-# =========================
+def make_loader(X, y, direction, shuffle: bool) -> DataLoader:
+    ds = TensorDataset(torch.from_numpy(X), torch.from_numpy(y), torch.from_numpy(direction))
+    return DataLoader(
+        ds,
+        batch_size=CONFIG["batch_size"],
+        shuffle=shuffle,
+        num_workers=CONFIG["num_workers"],
+        pin_memory=DEVICE.type == "cuda",
+    )
 
-class TransformerModel(nn.Module):
 
-    def __init__(
-        self,
-        input_dim=28,
-        d_model=64,
-        nhead=4,
-        num_layers=2,
-        dropout=0.1
-    ):
+class BareTransformer(nn.Module):
+    def __init__(self, input_dim: int, window_size: int, d_model: int, nhead: int,
+                 num_layers: int, ff_dim: int, dropout: float):
         super().__init__()
+        self.input_proj = nn.Linear(input_dim, d_model)
+        self.pos_emb = nn.Parameter(torch.zeros(1, window_size, d_model))
+        nn.init.trunc_normal_(self.pos_emb, std=0.02)
 
-        # 28개 feature → 64차원
-        self.input_projection = nn.Linear(input_dim, d_model)
-
-        # Transformer Encoder
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
+            dim_feedforward=ff_dim,
             dropout=dropout,
-            batch_first=True
+            activation="gelu",
+            batch_first=True,
+            norm_first=True,
         )
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.head = nn.Linear(d_model, 1)
 
-        self.transformer = nn.TransformerEncoder(
-            encoder_layer,
-            num_layers=num_layers
-        )
-
-        # 마지막에 수익률 1개 예측
-        self.output_layer = nn.Linear(d_model, 1)
-
-
-    def forward(self, x):
-
-        # x:
-        # (batch, 30, 28)
-
-        x = self.input_projection(x)
-
-        # (batch, 30, 64)
-        x = self.transformer(x)
-
-        # 마지막 날짜의 representation 사용
-        x = x[:, -1, :]
-
-        # (batch, 64) → (batch, 1)
-        x = self.output_layer(x)
-
-        return x.squeeze(-1)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (B, T, F)
+        x = self.input_proj(x) + self.pos_emb[:, :x.size(1)]
+        x = self.encoder(x)
+        return self.head(x[:, -1]).squeeze(-1)   # last timestep only
 
 
-# =========================
-# 5. 모델 생성
-# =========================
-
-model = TransformerModel().to(DEVICE)
-
-print(model)
-
-
-# =========================
-# 6. Loss / Optimizer
-# =========================
-
-criterion = nn.MSELoss()
-
-optimizer = torch.optim.Adam(
-    model.parameters(),
-    lr=LEARNING_RATE
-)
-
-
-# =========================
-# 7. Validation 함수
-# =========================
-
-def evaluate(loader):
-
+@torch.no_grad()
+def evaluate(model, loader, criterion, zero_th: float) -> Dict:
     model.eval()
+    loss_sum, n = 0.0, 0
+    ys, preds, dirs = [], [], []
+    for X, y, d in loader:
+        X, y = X.to(DEVICE), y.to(DEVICE)
+        pred = model(X)
+        loss_sum += criterion(pred, y).item() * len(y)
+        n += len(y)
+        ys.append(y.cpu().numpy())
+        preds.append(pred.cpu().numpy())
+        dirs.append(d.numpy().astype(np.int64))
+    y_true = np.concatenate(ys)
+    y_pred = np.concatenate(preds)
+    actual_dir = np.concatenate(dirs)
+    pred_dir = (y_pred > zero_th).astype(np.int64)
+    return {
+        "loss": loss_sum / max(n, 1),
+        "mae": float(mean_absolute_error(y_true, y_pred)),
+        "sign_acc": float(accuracy_score(actual_dir, pred_dir)),
+        "y_true": y_true,
+        "y_pred": y_pred,
+        "actual_dir": actual_dir,
+        "pred_dir": pred_dir,
+    }
 
-    total_loss = 0
-    total = 0
 
-    with torch.no_grad():
+def main():
+    set_seed(CONFIG["seed"])
+    print(f"Device: {DEVICE}")
 
-        for X, y in loader:
+    X_tr, y_tr, d_tr = load_split("train")
+    X_va, y_va, d_va = load_split("valid")
+    X_te, y_te, d_te = load_split("test")
 
-            X = X.to(DEVICE)
-            y = y.to(DEVICE)
+    input_dim, window = X_tr.shape[-1], X_tr.shape[1]
+    print(f"Features={input_dim}, window={window}")
 
-            prediction = model(X)
+    train_loader = make_loader(X_tr, y_tr, d_tr, True)
+    valid_loader = make_loader(X_va, y_va, d_va, False)
+    test_loader  = make_loader(X_te, y_te, d_te, False)
 
-            loss = criterion(prediction, y)
+    model = BareTransformer(
+        input_dim, window,
+        CONFIG["d_model"], CONFIG["nhead"], CONFIG["num_layers"],
+        CONFIG["ff_dim"], CONFIG["dropout"]
+    ).to(DEVICE)
+    print(f"Params: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
 
-            total_loss += loss.item() * len(y)
-            total += len(y)
-
-    return total_loss / total
-
-
-# =========================
-# 8. 학습
-# =========================
-
-best_valid_loss = float("inf")
-
-for epoch in range(EPOCHS):
-
-    model.train()
-
-    total_loss = 0
-    total = 0
-
-    for X, y in train_loader:
-
-        X = X.to(DEVICE)
-        y = y.to(DEVICE)
-
-        # 이전 gradient 제거
-        optimizer.zero_grad()
-
-        # 예측
-        prediction = model(X)
-
-        # Loss
-        loss = criterion(prediction, y)
-
-        # 역전파
-        loss.backward()
-
-        # 가중치 업데이트
-        optimizer.step()
-
-        total_loss += loss.item() * len(y)
-        total += len(y)
-
-    train_loss = total_loss / total
-
-    valid_loss = evaluate(valid_loader)
-
-    print(
-        f"Epoch [{epoch + 1:3d}/{EPOCHS}] "
-        f"Train Loss: {train_loss:.6f} "
-        f"Valid Loss: {valid_loss:.6f}"
+    criterion = nn.HuberLoss(delta=CONFIG["huber_delta"])
+    optimizer = torch.optim.AdamW(model.parameters(), lr=CONFIG["learning_rate"],
+                                  weight_decay=CONFIG["weight_decay"])
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", factor=0.5,
+        patience=CONFIG["scheduler_patience"], min_lr=CONFIG["min_learning_rate"]
     )
+    amp = CONFIG["use_amp"] and DEVICE.type == "cuda"
+    scaler = torch.amp.GradScaler("cuda", enabled=amp) if hasattr(torch.amp, "GradScaler") \
+             else torch.cuda.amp.GradScaler(enabled=amp)
 
-    # 가장 좋은 모델 저장
-    if valid_loss < best_valid_loss:
+    zero_th = load_zero_threshold()
+    best_loss, best_epoch, stale = float("inf"), 0, 0
+    history, t0 = [], time.time()
 
-        best_valid_loss = valid_loss
+    for epoch in range(1, CONFIG["epochs"] + 1):
+        model.train()
+        loss_sum, n = 0.0, 0
+        for X, y, _ in train_loader:
+            X, y = X.to(DEVICE), y.to(DEVICE)
+            optimizer.zero_grad(set_to_none=True)
+            with torch.autocast(device_type=DEVICE.type, dtype=torch.float16, enabled=amp):
+                loss = criterion(model(X), y)
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            nn.utils.clip_grad_norm_(model.parameters(), CONFIG["gradient_clip_norm"])
+            scaler.step(optimizer)
+            scaler.update()
+            loss_sum += loss.item() * len(y)
+            n += len(y)
 
-        torch.save(
-            model.state_dict(),
-            "data/processed/best_model.pth"
-        )
+        train_loss = loss_sum / max(n, 1)
+        valid = evaluate(model, valid_loader, criterion, zero_th)
+        scheduler.step(valid["loss"])
+        lr = optimizer.param_groups[0]["lr"]
 
-        print("  → Best model saved")
+        history.append({
+            "epoch": epoch, "train_loss": train_loss,
+            "valid_loss": valid["loss"], "valid_mae": valid["mae"],
+            "valid_sign_acc": valid["sign_acc"], "lr": lr
+        })
+        print(f"Ep {epoch:03d} | train={train_loss:.4f} | "
+              f"val={valid['loss']:.4f} MAE={valid['mae']:.4f} "
+              f"Sign={valid['sign_acc']*100:.1f}% | lr={lr:.1e}")
+
+        if valid["loss"] < best_loss - 1e-5:
+            best_loss, best_epoch, stale = valid["loss"], epoch, 0
+            torch.save(model.state_dict(), DATA_DIR / "best_model.pth")
+            print("  → best saved")
+        else:
+            stale += 1
+            if stale >= CONFIG["early_stopping_patience"]:
+                print("Early stopping.")
+                break
+
+    pd.DataFrame(history).to_csv(OUTPUT_DIR / "training_history.csv", index=False)
+    print(f"\nDone in {(time.time()-t0)/60:.1f} min | best ep={best_epoch} loss={best_loss:.5f}")
+
+    model.load_state_dict(torch.load(DATA_DIR / "best_model.pth", map_location=DEVICE))
+    test = evaluate(model, test_loader, criterion, zero_th)
+
+    print(f"\n===== TEST =====")
+    print(f"Samples     : {len(test['y_true'])}")
+    print(f"Huber loss  : {test['loss']:.5f}")
+    print(f"MAE         : {test['mae']:.5f}")
+    print(f"Sign acc    : {test['sign_acc']*100:.2f}%")
+    print(confusion_matrix(test["actual_dir"], test["pred_dir"], labels=[0, 1]))
+    print(f"Always-up   : {(test['actual_dir']==1).mean()*100:.2f}%")
+
+    pd.DataFrame({
+        "actual_return_scaled": test["y_true"],
+        "predicted_return_scaled": test["y_pred"],
+        "actual_direction": test["actual_dir"],
+        "predicted_direction": test["pred_dir"],
+    }).to_csv(OUTPUT_DIR / "test_predictions.csv", index=False)
+
+    with open(OUTPUT_DIR / "metrics.json", "w") as f:
+        json.dump({
+            "best_epoch": best_epoch,
+            "best_valid_loss": best_loss,
+            "test_loss": test["loss"],
+            "test_mae": test["mae"],
+            "test_sign_acc": test["sign_acc"],
+            "config": CONFIG,
+        }, f, indent=2)
+
+    print(f"\nSaved → {OUTPUT_DIR}")
 
 
-# =========================
-# 9. Test
-# =========================
-
-model.load_state_dict(
-    torch.load(
-        "data/processed/best_model.pth",
-        map_location=DEVICE
-    )
-)
-
-test_loss = evaluate(test_loader)
-
-print()
-print("=========================")
-print(f"Test Loss: {test_loss:.6f}")
-print("=========================")
-
-
-# =========================
-# 10. 방향성 정확도
-# =========================
-
-model.eval()
-
-predictions = []
-actuals = []
-
-with torch.no_grad():
-
-    for X, y in test_loader:
-
-        X = X.to(DEVICE)
-
-        prediction = model(X)
-
-        predictions.extend(prediction.cpu().numpy())
-        actuals.extend(y.numpy())
-
-
-predictions = np.array(predictions)
-actuals = np.array(actuals)
-
-direction_accuracy = (
-    np.sign(predictions) == np.sign(actuals)
-).mean()
-
-print(f"Direction Accuracy: {direction_accuracy * 100:.2f}%")
-
-always_up_accuracy = (actuals > 0).mean()
-always_down_accuracy = (actuals < 0).mean()
-
-print(f"Always Up Accuracy: {always_up_accuracy * 100:.2f}%")
-print(f"Always Down Accuracy: {always_down_accuracy * 100:.2f}%")
-print(f"Transformer Accuracy: {direction_accuracy * 100:.2f}%")
+if __name__ == "__main__":
+    main()

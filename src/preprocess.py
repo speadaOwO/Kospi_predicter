@@ -315,20 +315,19 @@ for i, feature in enumerate(features):
 
 df.to_csv("data/processed/raw_prep.csv")
 
+
 # =========================================================
-# 15. X / y
+# 15. X / y 및 분류 라벨
 # =========================================================
 
 X = df[features].copy()
-y = df["target"].copy()
+y_raw = df["target"].copy()
 
+# 원래 수익률 기준으로 분류 라벨 생성
+y_direction = (y_raw > 0).astype(np.float32)
 
-# =========================================================
-# 16. 시간 순서대로 Train / Valid / Test 분할
-# =========================================================
-
+# 시간순 분할
 n = len(X)
-
 train_end = int(n * 0.70)
 valid_end = int(n * 0.85)
 
@@ -336,41 +335,47 @@ X_train = X.iloc[:train_end].copy()
 X_valid = X.iloc[train_end:valid_end].copy()
 X_test = X.iloc[valid_end:].copy()
 
-y_train = y.iloc[:train_end].copy()
-y_valid = y.iloc[train_end:valid_end].copy()
-y_test = y.iloc[valid_end:].copy()
+y_train_raw = y_raw.iloc[:train_end].copy()
+y_valid_raw = y_raw.iloc[train_end:valid_end].copy()
+y_test_raw = y_raw.iloc[valid_end:].copy()
 
+y_train_dir = y_direction.iloc[:train_end].copy()
+y_valid_dir = y_direction.iloc[train_end:valid_end].copy()
+y_test_dir = y_direction.iloc[valid_end:].copy()
 
-print("\n===== Split =====")
-print("Train:", X_train.shape)
-print("Valid:", X_valid.shape)
-print("Test :", X_test.shape)
-
+for name, labels in [
+    ("Train", y_train_dir),
+    ("Valid", y_valid_dir),
+    ("Test", y_test_dir),
+]:
+    print(
+        f"{name}: 상승 {labels.mean():.2%}, "
+        f"하락 {1 - labels.mean():.2%}"
+    )
 
 # =========================================================
-# 17. StandardScaler
+# 16. StandardScaler
 # =========================================================
 
 scaler_X = StandardScaler()
 scaler_y = StandardScaler()
 
-# 반드시 Train에만 fit
 X_train = scaler_X.fit_transform(X_train)
 X_valid = scaler_X.transform(X_valid)
 X_test = scaler_X.transform(X_test)
 
+# 회귀 타깃만 표준화
 y_train = scaler_y.fit_transform(
-    y_train.to_numpy().reshape(-1, 1)
+    y_train_raw.to_numpy().reshape(-1, 1)
 ).flatten()
 
 y_valid = scaler_y.transform(
-    y_valid.to_numpy().reshape(-1, 1)
+    y_valid_raw.to_numpy().reshape(-1, 1)
 ).flatten()
 
 y_test = scaler_y.transform(
-    y_test.to_numpy().reshape(-1, 1)
+    y_test_raw.to_numpy().reshape(-1, 1)
 ).flatten()
-
 
 # =========================================================
 # 18. Sequence 생성
@@ -389,6 +394,41 @@ def make_sequences(X, y, window_size):
 
     return np.array(X_seq), np.array(y_seq)
 
+
+# 분류 라벨은 표준화하지 않고 저장
+def make_direction_sequences(labels, window_size):
+    labels = np.asarray(labels)
+
+    return np.array([
+        labels[i + window_size - 1]
+        for i in range(len(labels) - window_size + 1)
+    ], dtype=np.float32)
+
+
+y_train_dir_seq = make_direction_sequences(
+    y_train_dir, WINDOW_SIZE
+)
+y_valid_dir_seq = make_direction_sequences(
+    y_valid_dir, WINDOW_SIZE
+)
+y_test_dir_seq = make_direction_sequences(
+    y_test_dir, WINDOW_SIZE
+)
+
+np.save(
+    f"{OUTPUT_DIR}/y_train_direction.npy",
+    y_train_dir_seq
+)
+np.save(
+    f"{OUTPUT_DIR}/y_valid_direction.npy",
+    y_valid_dir_seq
+)
+np.save(
+    f"{OUTPUT_DIR}/y_test_direction.npy",
+    y_test_dir_seq
+)
+
+print("분류 라벨 저장 완료")
 
 X_train_seq, y_train_seq = make_sequences(
     X_train,
