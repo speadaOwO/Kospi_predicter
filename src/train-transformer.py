@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 from sklearn.metrics import accuracy_score, confusion_matrix, mean_absolute_error , roc_auc_score
 from torch.utils.data import DataLoader, TensorDataset
-seed = 100
+seed = 200
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data" / "processed"
 OUTPUT_DIR = DATA_DIR / "training_run"
@@ -28,10 +28,10 @@ CONFIG = {
     "scheduler_patience": 4,
     "min_learning_rate": 1e-6,
     "gradient_clip_norm": 1.0,
-    "d_model": 32,
+    "d_model": 16,
     "nhead": 4,
     "num_layers": 2,
-    "ff_dim": 64,
+    "ff_dim": 32,
     "dropout": 0.1,
     "huber_delta": 1.0,
     "num_workers": 0,
@@ -320,6 +320,7 @@ def main():
 
     print(f"\n===== TEST =====")
     print(f"Samples     : {len(test['y_true'])}")
+    print(f"FFN fim :{CONFIG['ff_dim']} ")
     print(f"Huber loss  : {test['loss']:.5f}")
     print(f"MAE         : {test['mae']:.5f}")
     print(f"Sign acc    : {test['sign_acc']*100:.2f}%")

@@ -17,7 +17,12 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
-from sklearn.metrics import accuracy_score, confusion_matrix, mean_absolute_error
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    mean_absolute_error,
+    roc_auc_score,
+)
 from torch.utils.data import DataLoader, TensorDataset
 
 
@@ -178,10 +183,17 @@ def evaluate(model, loader, criterion, zero_th: float) -> Dict:
 
     pred_dir = (y_pred > zero_th).astype(np.int64)
 
+    try:
+        auc = float(roc_auc_score(actual_dir, y_pred))
+    except ValueError:
+        # 실제 라벨이 한 종류뿐인 경우 AUC 계산 불가
+        auc = float("nan")
+
     return {
         "loss": loss_sum / max(n, 1),
         "mae": float(mean_absolute_error(y_true, y_pred)),
         "sign_acc": float(accuracy_score(actual_dir, pred_dir)),
+        "roc_auc": auc,
         "y_true": y_true,
         "y_pred": y_pred,
         "actual_dir": actual_dir,
@@ -382,6 +394,7 @@ def main():
 
     print("\n===== CNN TEST =====")
     print(f"Samples     : {len(test['y_true'])}")
+    print(f"ROC-AUC     : {test['roc_auc']:.4f}")
     print(f"Huber loss  : {test['loss']:.5f}")
     print(f"MAE         : {test['mae']:.5f}")
     print(f"seed = {seed}")
