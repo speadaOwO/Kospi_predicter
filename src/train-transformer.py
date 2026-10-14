@@ -28,10 +28,10 @@ CONFIG = {
     "scheduler_patience": 4,
     "min_learning_rate": 1e-6,
     "gradient_clip_norm": 1.0,
-    "d_model": 16,
+    "d_model": 12,
     "nhead": 4,
     "num_layers": 2,
-    "ff_dim": 32,
+    "ff_dim": 24,
     "dropout": 0.1,
     "huber_delta": 1.0,
     "num_workers": 0,
@@ -147,7 +147,16 @@ def evaluate(model, loader, criterion, zero_th: float) -> Dict:
         "pred_dir": pred_dir,
     }
 
-
+def find_best_threshold(y_true_dir, y_pred_score):
+    # y_pred_score는 scaled return 예측값
+    best_th, best_acc = 0, 0
+    thresholds = np.linspace(y_pred_score.min(), y_pred_score.max(), 100)
+    for th in thresholds:
+        pred = (y_pred_score > th).astype(int)
+        acc = accuracy_score(y_true_dir, pred)
+        if acc > best_acc:
+            best_acc, best_th = acc, th
+    return best_th, best_acc
 
 def main():
     set_seed(CONFIG["seed"])
@@ -204,6 +213,8 @@ def main():
 
         train_loss = loss_sum / max(n, 1)
         valid = evaluate(model, valid_loader, criterion, zero_th)
+        best_th, best_acc = find_best_threshold(valid["actual_dir"], valid["y_pred"])
+        print(f"Best threshold on Valid: {best_th:.4f} -> Acc {best_acc*100:.2f}% (zero_th={zero_th:.4f})")
         scheduler.step(valid["loss"])
         lr = optimizer.param_groups[0]["lr"]
 
@@ -317,6 +328,9 @@ def main():
 
     model.load_state_dict(torch.load(DATA_DIR / "best_model.pth", map_location=DEVICE))
     test = evaluate(model, test_loader, criterion, zero_th)
+    test_pred_dir_tuned = (test["y_pred"] > best_th).astype(int)
+    tuned_acc = accuracy_score(test["actual_dir"], test_pred_dir_tuned)
+    print(f"Tuned Test Sign Acc: {tuned_acc*100:.2f}%")
 
     print(f"\n===== TEST =====")
     print(f"Samples     : {len(test['y_true'])}")
