@@ -1,0 +1,71 @@
+import pandas as pd
+import numpy as np
+
+# raw 33개 로드
+df = pd.read_csv("data/raw/data.csv", index_col=0, parse_dates=True)
+df.index = pd.to_datetime(df.index)
+df = df.sort_index()
+
+# --- 네 36개 만드는 로직 그대로 ---
+df["KOSPI_return"] = df["Close"].pct_change()
+df["volume_change"] = df["Volume"].pct_change()
+df["KOSPI_disparity5"] = df["Close"] / df["Close"].rolling(5).mean() * 100
+df["KOSPI_disparity20"] = df["Close"] / df["Close"].rolling(20).mean() * 100
+
+delta = df["Close"].diff()
+gain = delta.clip(lower=0)
+loss = -delta.clip(upper=0)
+avg_gain = gain.ewm(alpha=1/14, adjust=False, min_periods=14).mean()
+avg_loss = loss.ewm(alpha=1/14, adjust=False, min_periods=14).mean()
+df["RSI_14"] = 100 - (100 / (1 + avg_gain/avg_loss))
+
+ema12 = df["Close"].ewm(span=12, adjust=False).mean()
+ema26 = df["Close"].ewm(span=26, adjust=False).mean()
+df["MACD"] = ema12 - ema26
+df["MACD_Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
+df["MACD_Histogram"] = df["MACD"] - df["MACD_Signal"]
+df["MACD_pct"] = df["MACD"] / df["Close"]
+df["MACD_Signal_pct"] = df["MACD_Signal"] / df["Close"]
+df["MACD_Histogram_pct"] = df["MACD_Histogram"] / df["Close"]
+
+bb_middle = df["Close"].rolling(20).mean()
+bb_std = df["Close"].rolling(20).std()
+df["BB_Upper"] = bb_middle + 2*bb_std
+df["BB_Lower"] = bb_middle - 2*bb_std
+df["BB_%B"] = (df["Close"] - df["BB_Lower"]) / (df["BB_Upper"] - df["BB_Lower"])
+df["BB_Width"] = (df["BB_Upper"] - df["BB_Lower"]) / bb_middle
+
+high_low = df["High"] - df["Low"]
+true_range = pd.concat([high_low, (df["High"]-df["Close"].shift(1)).abs(), (df["Low"]-df["Close"].shift(1)).abs()], axis=1).max(axis=1)
+df["ATR_14_pct"] = true_range.rolling(14).mean() / df["Close"]
+
+lowest_low = df["Low"].rolling(14).min()
+highest_high = df["High"].rolling(14).max()
+df["Stoch_%K"] = (df["Close"] - lowest_low) / (highest_high - lowest_low) * 100
+df["Stoch_%D"] = df["Stoch_%K"].rolling(3).mean()
+
+df["SP500_return"] = df["^GSPC"].pct_change()
+df["NASDAQ_return"] = df["^IXIC"].pct_change()
+df["SOX_return"] = df["^SOX"].pct_change()
+df["USDKRW_return"] = df["KRW=X"].pct_change()
+df["USDKRW_disparity5"] = df["KRW=X"] / df["KRW=X"].rolling(5).mean() * 100
+df["USDKRW_disparity20"] = df["KRW=X"] / df["KRW=X"].rolling(20).mean() * 100
+df["VIX_change"] = df["^VIX"].pct_change()
+df["VKOSPI_change"] = df["VKOSPI"].pct_change()
+df["WTI_return"] = df["CL=F"].pct_change()
+df["US10Y_change"] = df["^TNX"].pct_change()
+
+df["KR_rate_change"] = df["INTDSRKRM193N"].diff()
+df["US_rate_change"] = df["FEDFUNDS"].diff()
+df["JP_rate_change"] = df["INTDSRJPM193N"].diff()
+
+features = ["KOSPI_return","volume_change","KOSPI_disparity5","KOSPI_disparity20","RSI_14","MACD_pct","MACD_Signal_pct","MACD_Histogram_pct","BB_%B","BB_Width","ATR_14_pct","Stoch_%K","Stoch_%D","SP500_return","NASDAQ_return","SOX_return","USDKRW_return","USDKRW_disparity5","USDKRW_disparity20","VIX_change","VKOSPI","VKOSPI_change","WTI_return","US10Y_change","institution_net_value","retail_net_value","foreign_net_value","institution_net_volume","retail_net_volume","foreign_net_volume","INTDSRKRM193N","FEDFUNDS","INTDSRJPM193N","KR_rate_change","US_rate_change","JP_rate_change"]
+
+df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=features)
+
+# --- 맨 뒤 250개만 CSV로 ---
+df_last_250 = df[features].tail(250)
+
+df_last_250.to_csv("todayfixed_250x36.csv", encoding="utf-8-sig")
+
+print(f"저장 완료: today_250x36.csv | {df_last_250.shape} | {df_last_250.index[0].date()} ~ {df_last_250.index[-1].date()}")

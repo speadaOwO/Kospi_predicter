@@ -1,0 +1,26 @@
+{
+  "best_epoch": 6,
+  "best_valid_loss": 0.3557658786768226,
+  "test_loss": 1.1349848200581985,
+  "test_mae": 1.532432198524475,
+  "test_sign_acc": 0.6636155606407322,
+  "config": {
+    "seed": 300,
+    "epochs": 100,
+    "batch_size": 64,
+    "learning_rate": 0.0003,
+    "weight_decay": 0.001,
+    "early_stopping_patience": 7,
+    "scheduler_patience": 4,
+    "min_learning_rate": 1e-06,
+    "gradient_clip_norm": 1.0,
+    "d_model": 32,
+    "nhead": 4,
+    "num_layers": 2,
+    "ff_dim": 64,
+    "dropout": 0.1,
+    "huber_delta": 1.0,
+    "num_workers": 0,
+    "use_amp": true
+  }
+}

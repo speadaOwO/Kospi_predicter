@@ -1,0 +1,25 @@
+{
+  "model": "CNN",
+  "best_epoch": 3,
+  "best_valid_loss": 0.39680603733051834,
+  "test_loss": 1.2048290927022764,
+  "test_mae": 1.6055028438568115,
+  "test_sign_acc": 0.6018306636155606,
+  "config": {
+    "seed": 300,
+    "epochs": 100,
+    "batch_size": 64,
+    "learning_rate": 0.0003,
+    "weight_decay": 0.001,
+    "early_stopping_patience": 14,
+    "scheduler_patience": 4,
+    "min_learning_rate": 1e-06,
+    "gradient_clip_norm": 1.0,
+    "channels": 64,
+    "kernel_size": 3,
+    "dropout": 0.15,
+    "huber_delta": 1.0,
+    "num_workers": 0,
+    "use_amp": true
+  }
+}

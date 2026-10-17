@@ -5,7 +5,7 @@ from pykrx import stock
 import FinanceDataReader as fdr
 
 start = "2003-01-01"
-end= "2026-10-16"
+end= "2026-10-17"
 
 tickers = {
     "KOSPI": "^KS11",
@@ -89,7 +89,7 @@ print("기간:", df.index.min(), "~", df.index.max())
 
 value = stock.get_market_trading_value_by_date(
     "20030101",
-    "20260914",
+    "20261017",
     "KOSPI"
 )
 
@@ -98,7 +98,7 @@ value = stock.get_market_trading_value_by_date(
 
 volume = stock.get_market_trading_volume_by_date(
     "20030101",
-    "20260914",
+    "20261017",
     "KOSPI"
 )
 
@@ -139,11 +139,11 @@ vkospi = (
     .sort_index()
 )
 
-# df = df.join(vkospi[["VKOSPI"]], how="left")
+df = df.join(vkospi[["VKOSPI"]], how="left")
 
 print("전체 데이터:", df.shape)
-# print("VKOSPI 시작일:", df["VKOSPI"].first_valid_index())
-# print("VKOSPI 결측치:", df["VKOSPI"].isna().sum())
+print("VKOSPI 시작일:", df["VKOSPI"].first_valid_index())
+print("VKOSPI 결측치:", df["VKOSPI"].isna().sum())
 
 print(df.columns )
 

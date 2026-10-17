@@ -327,6 +327,9 @@ def main():
     )
 
     model.load_state_dict(torch.load(DATA_DIR / "best_model.pth", map_location=DEVICE))
+    valid_best = evaluate(model, valid_loader, criterion, zero_th)
+    best_th, _ = find_best_threshold(valid_best["actual_dir"], valid_best["y_pred"])
+    print(f"Final Best threshold from BEST model: {best_th}")
     test = evaluate(model, test_loader, criterion, zero_th)
     test_pred_dir_tuned = (test["y_pred"] > best_th).astype(int)
     tuned_acc = accuracy_score(test["actual_dir"], test_pred_dir_tuned)
@@ -364,3 +367,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    

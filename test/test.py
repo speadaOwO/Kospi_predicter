@@ -1,10 +1,10 @@
-from pathlib import Path
-
-p = Path("data/processed/scaler_y.pkl")
-
-print("경로:", p.resolve())
-print("존재:", p.exists())
-
-if p.exists():
-    print("크기:", p.stat().st_size)
-    print("첫 100바이트:", repr(p.read_bytes()[:100]))
+name = "김시후"
+score = [70,85,90,65,100]
+print(score[-1])
+print(score[:3])
+score[4] = 0
+import pandas as pd
+df = pd.read_csv("./hehe/valo2.csv")
+df.head(10)
+print(df["Kills"],print["Assists"])
+df.sort_values(by=["Kills","Assists"],ascending=[True,False])

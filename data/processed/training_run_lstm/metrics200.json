@@ -1,0 +1,41 @@
+{
+  "best_epoch": 6,
+  "best_valid_loss": 0.345496198540962,
+  "test_loss": 1.067364266700668,
+  "test_mae": 1.462424397468567,
+  "test_direction_accuracy": 0.5814889336016097,
+  "test_balanced_accuracy": 0.5871065989847716,
+  "test_auc": 0.6411844331641285,
+  "always_up_accuracy": 0.6036217303822937,
+  "always_down_accuracy": 0.3963782696177062,
+  "confusion_matrix": [
+    [
+      121,
+      76
+    ],
+    [
+      132,
+      168
+    ]
+  ],
+  "num_test_samples": 497,
+  "zero_threshold": -0.027774641139834463,
+  "config": {
+    "seed": 200,
+    "epochs": 100,
+    "batch_size": 64,
+    "learning_rate": 0.0003,
+    "weight_decay": 0.001,
+    "early_stopping_patience": 7,
+    "scheduler_patience": 4,
+    "min_learning_rate": 1e-06,
+    "gradient_clip_norm": 1.0,
+    "hidden_size": 64,
+    "num_layers": 2,
+    "dropout": 0.2,
+    "bidirectional": true,
+    "huber_delta": 1.0,
+    "num_workers": 0,
+    "use_amp": true
+  }
+}

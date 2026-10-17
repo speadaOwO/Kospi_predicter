@@ -22,7 +22,7 @@ class BareTransformer(nn.Module):
         x = self.input_proj(x) + self.pos_emb[:, :x.size(1), :]
         x = self.encoder(x)
         return self.head(x[:, -1]).squeeze(-1)
-
+print(BareTransformer.parameters())
 X_train = np.load("./data/processed/X_train.npy")
 y_train = np.load("./data/processed/y_train.npy")
 X_valid = np.load("./data/processed/X_valid.npy")
