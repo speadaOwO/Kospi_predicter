@@ -5,7 +5,7 @@ from pykrx import stock
 import FinanceDataReader as fdr
 
 start = "2003-01-01"
-end= "2026-9-14"
+end= "2026-10-16"
 
 tickers = {
     "KOSPI": "^KS11",
@@ -139,11 +139,11 @@ vkospi = (
     .sort_index()
 )
 
-df = df.join(vkospi[["VKOSPI"]], how="left")
+# df = df.join(vkospi[["VKOSPI"]], how="left")
 
 print("전체 데이터:", df.shape)
-print("VKOSPI 시작일:", df["VKOSPI"].first_valid_index())
-print("VKOSPI 결측치:", df["VKOSPI"].isna().sum())
+# print("VKOSPI 시작일:", df["VKOSPI"].first_valid_index())
+# print("VKOSPI 결측치:", df["VKOSPI"].isna().sum())
 
 print(df.columns )
 

@@ -15,7 +15,7 @@ from sklearn.preprocessing import StandardScaler
 INPUT_PATH = "data/raw/data.csv"
 OUTPUT_DIR = "data/processed"
 
-WINDOW_SIZE = 240
+WINDOW_SIZE = 250
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -278,22 +278,22 @@ cpi_columns = {
     "JPNCPIALLMINMEI": "JP_CPI_inflation",
 }
 
-for source_col, new_col in cpi_columns.items():
-    monthly = df[source_col].dropna()
-    monthly = monthly[~monthly.index.duplicated(keep="last")]
+# for source_col, new_col in cpi_columns.items():
+#     monthly = df[source_col].dropna()
+#     monthly = monthly[~monthly.index.duplicated(keep="last")]
 
-    # 월별 관측값만 추출
-    monthly = monthly.groupby(monthly.index.to_period("M")).last()
-    monthly.index = monthly.index.to_timestamp()
+#     # 월별 관측값만 추출
+#     monthly = monthly.groupby(monthly.index.to_period("M")).last()
+#     monthly.index = monthly.index.to_timestamp()
 
-    # 전년 동월 대비 상승률
-    inflation = monthly.pct_change(12, fill_method=None) * 100
+#     # 전년 동월 대비 상승률
+#     inflation = monthly.pct_change(12, fill_method=None) * 100
 
-    # 월별 결과를 일별 날짜에 병합
-    inflation.index.name = "Date"
-    df[new_col] = inflation.reindex(
-        df.index.to_period("M").to_timestamp()
-    ).to_numpy()
+#     # 월별 결과를 일별 날짜에 병합
+#     inflation.index.name = "Date"
+#     df[new_col] = inflation.reindex(
+#         df.index.to_period("M").to_timestamp()
+#     ).to_numpy()
 
 # =========================
 # features 목록에 추가할 변수
@@ -311,14 +311,14 @@ macro_features = [
     "JP_rate_change",
 
     # CPI 지수
-    "KORCPIALLMINMEI",
-    "CPIAUCSL",
-    "JPNCPIALLMINMEI",
+    # "KORCPIALLMINMEI",
+    # "CPIAUCSL",
+    # "JPNCPIALLMINMEI",
 
     # CPI 전년 동월 대비 상승률
-    "KR_CPI_inflation",
-    "US_CPI_inflation",
-    "JP_CPI_inflation",
+    # "KR_CPI_inflation",
+    # "US_CPI_inflation",
+    # "JP_CPI_inflation",
 ]
 
 
@@ -448,25 +448,25 @@ y_direction = (y_raw > 0).astype(np.float32)
 # 시간순 분할
 n = len(X)
 
-train_end = int(n * 0.70)
-valid_end = int(n * 0.85)
+train_end = int(n * 0.80)
+# valid_end = int(n * 0.85)
 
 X_train = X.iloc[:train_end].copy()
-X_valid = X.iloc[train_end:valid_end].copy()
-X_test = X.iloc[valid_end:].copy()
+X_valid = X.iloc[train_end:].copy()
+# X_test = X.iloc[valid_end:].copy()
 
 y_train_raw = y_raw.iloc[:train_end].copy()
-y_valid_raw = y_raw.iloc[train_end:valid_end].copy()
-y_test_raw = y_raw.iloc[valid_end:].copy()
+y_valid_raw = y_raw.iloc[train_end:].copy()
+# y_test_raw = y_raw.iloc[valid_end:].copy()
 
 y_train_dir = y_direction.iloc[:train_end].copy()
-y_valid_dir = y_direction.iloc[train_end:valid_end].copy()
-y_test_dir = y_direction.iloc[valid_end:].copy()
+y_valid_dir = y_direction.iloc[train_end:].copy()
+# y_test_dir = y_direction.iloc[valid_end:].copy()
 
 for name, labels in [
     ("Train", y_train_dir),
     ("Valid", y_valid_dir),
-    ("Test", y_test_dir),
+    # ("Test", y_test_dir),
 ]:
     print(
         f"{name}: 상승 {labels.mean():.2%}, "
@@ -484,7 +484,7 @@ scaler_y = StandardScaler()
 # 스케일러는 train 데이터에만 fit
 X_train = scaler_X.fit_transform(X_train)
 X_valid = scaler_X.transform(X_valid)
-X_test = scaler_X.transform(X_test)
+# X_test = scaler_X.transform(X_test)
 
 y_train = scaler_y.fit_transform(
     y_train_raw.to_numpy().reshape(-1, 1)
@@ -494,9 +494,9 @@ y_valid = scaler_y.transform(
     y_valid_raw.to_numpy().reshape(-1, 1)
 ).flatten()
 
-y_test = scaler_y.transform(
-    y_test_raw.to_numpy().reshape(-1, 1)
-).flatten()
+# y_test = scaler_y.transform(
+#     y_test_raw.to_numpy().reshape(-1, 1)
+# ).flatten()
 
 
 # =========================================================
@@ -534,9 +534,9 @@ y_valid_dir_seq = make_direction_sequences(
     y_valid_dir, WINDOW_SIZE
 )
 
-y_test_dir_seq = make_direction_sequences(
-    y_test_dir, WINDOW_SIZE
-)
+# y_test_dir_seq = make_direction_sequences(
+#     y_test_dir, WINDOW_SIZE
+# )
 
 X_train_seq, y_train_seq = make_sequences(
     X_train, y_train, WINDOW_SIZE
@@ -546,9 +546,9 @@ X_valid_seq, y_valid_seq = make_sequences(
     X_valid, y_valid, WINDOW_SIZE
 )
 
-X_test_seq, y_test_seq = make_sequences(
-    X_test, y_test, WINDOW_SIZE
-)
+# X_test_seq, y_test_seq = make_sequences(
+#     X_test, y_test, WINDOW_SIZE
+# )
 
 
 # =========================================================
@@ -565,20 +565,20 @@ print("X_valid:", X_valid_seq.shape)
 print("y_valid:", y_valid_seq.shape)
 print("Direction valid:", y_valid_dir_seq.shape)
 
-print("X_test :", X_test_seq.shape)
-print("y_test :", y_test_seq.shape)
-print("Direction test:", y_test_dir_seq.shape)
+# print("X_test :", X_test_seq.shape)
+# print("y_test :", y_test_seq.shape)
+# print("Direction test:", y_test_dir_seq.shape)
 
 assert X_train_seq.shape[1] == WINDOW_SIZE
 assert X_train_seq.shape[2] == len(features)
 
 assert len(X_train_seq) == len(y_train_seq)
 assert len(X_valid_seq) == len(y_valid_seq)
-assert len(X_test_seq) == len(y_test_seq)
+# assert len(X_test_seq) == len(y_test_seq)
 
 assert len(y_train_seq) == len(y_train_dir_seq)
 assert len(y_valid_seq) == len(y_valid_dir_seq)
-assert len(y_test_seq) == len(y_test_dir_seq)
+# assert len(y_test_seq) == len(y_test_dir_seq)
 
 
 # =========================================================
@@ -590,11 +590,11 @@ arrays = {
     "y_train": y_train_seq,
     "X_valid": X_valid_seq,
     "y_valid": y_valid_seq,
-    "X_test": X_test_seq,
-    "y_test": y_test_seq,
+    # "X_test": X_test_seq,
+    # "y_test": y_test_seq,
     "y_train_direction": y_train_dir_seq,
     "y_valid_direction": y_valid_dir_seq,
-    "y_test_direction": y_test_dir_seq,
+    # "y_test_direction": y_test_dir_seq,
 }
 
 for name, array in arrays.items():

@@ -1,0 +1,86 @@
+# final_train_from_npy_split.py
+import torch, numpy as np
+from torch.utils.data import DataLoader
+from sklearn.metrics import roc_auc_score
+import torch.nn as nn
+
+WINDOW = 250
+SEED = 205
+BATCH = 64
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+torch.manual_seed(SEED); np.random.seed(SEED)
+
+class BareTransformer(nn.Module):
+    def __init__(self, input_dim, d_model=12, nhead=3, num_layers=1):
+        super().__init__()
+        self.input_proj = nn.Linear(input_dim, d_model)
+        layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True, dim_feedforward=32)
+        self.encoder = nn.TransformerEncoder(layer, num_layers=num_layers)
+        self.pos_emb = nn.Parameter(torch.zeros(1, WINDOW, d_model))
+        self.head = nn.Linear(d_model, 1)
+    def forward(self, x):
+        x = self.input_proj(x) + self.pos_emb[:, :x.size(1), :]
+        x = self.encoder(x)
+        return self.head(x[:, -1]).squeeze(-1)
+
+X_train = np.load("./data/processed/X_train.npy")
+y_train = np.load("./data/processed/y_train.npy")
+X_valid = np.load("./data/processed/X_valid.npy")
+y_valid = np.load("./data/processed/y_valid.npy")
+
+X_full = np.concatenate([X_train, X_valid], axis=0)
+y_full = np.concatenate([y_train, y_valid], axis=0)
+
+print(f"Train {X_train.shape} Valid {X_valid.shape} Full {X_full.shape}")
+
+train_loader = DataLoader(torch.utils.data.TensorDataset(torch.FloatTensor(X_train), torch.FloatTensor(y_train)), batch_size=BATCH, shuffle=True)
+valid_loader = DataLoader(torch.utils.data.TensorDataset(torch.FloatTensor(X_valid), torch.FloatTensor(y_valid)), batch_size=BATCH)
+full_loader = DataLoader(torch.utils.data.TensorDataset(torch.FloatTensor(X_full), torch.FloatTensor(y_full)), batch_size=BATCH, shuffle=True)
+
+# PHASE 1
+model = BareTransformer(X_train.shape[2]).to(DEVICE)
+opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+loss_fn = nn.MSELoss()
+best_auc, best_epoch, wait = 0, 1, 0
+for epoch in range(1, 101):
+    model.train()
+    for xb, yb in train_loader:
+        xb, yb = xb.to(DEVICE), yb.to(DEVICE)
+        opt.zero_grad(); loss_fn(model(xb), yb).backward(); opt.step()
+    model.eval(); preds=[]
+    with torch.no_grad():
+        for xb,_ in valid_loader: preds.append(model(xb.to(DEVICE)).cpu().numpy())
+    preds=np.concatenate(preds)
+    try: auc = roc_auc_score((y_valid>0).astype(int), preds)
+    except: auc=0.5
+    if auc>best_auc: best_auc,best_epoch,wait=auc,epoch,0; torch.save(model.state_dict(),"phase1_best.pt")
+    else: wait+=1
+    print(f"[{epoch}] Valid AUC {auc:.4f} best {best_auc:.4f} @ {best_epoch}")
+    if wait>=15: break
+
+# threshold
+model.load_state_dict(torch.load("phase1_best.pt")); model.eval()
+vp=[]
+with torch.no_grad():
+    for xb,_ in valid_loader: vp.append(model(xb.to(DEVICE)).cpu().numpy())
+vp=np.concatenate(vp)
+best_th,best_acc=0,0
+for th in np.arange(-1,1,0.005):
+    acc=((vp>th)==(y_valid>0)).mean()
+    if acc>best_acc: best_acc,best_th=acc,th
+
+# PHASE 2 - FULL (Test 없는 전체)
+print(f"\nRetrain FULL for {best_epoch} epochs...")
+model2 = BareTransformer(X_train.shape[2]).to(DEVICE)
+opt2 = torch.optim.Adam(model2.parameters(), lr=1e-3)
+for epoch in range(1, best_epoch+1):
+    model2.train()
+    for xb, yb in full_loader:
+        xb, yb = xb.to(DEVICE), yb.to(DEVICE)
+        opt2.zero_grad(); loss_fn(model2(xb), yb).backward(); opt2.step()
+    print(f"Final {epoch}/{best_epoch}")
+
+torch.save(model2.state_dict(),"best_model_done.pt")
+with open("best_th.txt","w") as f: f.write(f"{best_th}\n{best_epoch}\n{best_auc}\n{best_acc}\n")
+
+print(f"\nDONE -> best_model.pt / best_th.txt | th={best_th:.4f} epoch={best_epoch}")
