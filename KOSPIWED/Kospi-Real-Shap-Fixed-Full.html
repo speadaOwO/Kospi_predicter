@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KOSPI AI Real SHAP (Fixed)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:#1f2937}::-webkit-scrollbar-thumb{background:#374151;border-radius:3px}
+.drop-zone-active{border-color:#3b82f6!important;background-color:rgba(59,130,246,0.1)!important}
+</style>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans min-h-screen flex flex-col">
+<header class="border-b border-gray-800 bg-gray-900/80 backdrop-blur sticky top-0 z-50">
+<div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="p-2 bg-blue-600/20 text-blue-400 rounded-lg border border-blue-500/30"><i class="fa-solid fa-chart-line"></i></div>
+<div><h1 class="font-bold text-lg bg-gradient-to-r from-blue-400 to-indigo-300 bg-clip-text text-transparent">KOSPI AI Sentinel - Real SHAP</h1><p class="text-xs text-gray-400">Client-Side ONNX + True Occlusion SHAP</p></div>
+</div>
+<div class="flex items-center gap-2">
+<span id="model-status-badge" class="px-2.5 py-1 text-xs rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span><span id="model-status-text">model.onnx 필요</span></span>
+<label class="cursor-pointer bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-500/30 flex items-center gap-1.5"><i class="fa-solid fa-microchip"></i> model.onnx<input type="file" id="model-input" accept=".onnx" class="hidden"></label>
+<label class="cursor-pointer bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg border border-blue-400/30 flex items-center gap-2"><i class="fa-solid fa-file-csv"></i> today.csv<input type="file" id="csv-input" accept=".csv" class="hidden"></label>
+</div>
+</div>
+</header>
+<main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
+<div id="drop-zone" class="border-2 border-dashed border-gray-800 rounded-2xl p-4 text-center bg-gray-900/50 hover:border-gray-700 transition cursor-pointer flex flex-col sm:flex-row items-center justify-between gap-3">
+<div class="flex items-center gap-3"><div class="p-2.5 bg-gray-800 rounded-xl text-blue-400"><i class="fa-solid fa-folder-open"></i></div><div class="text-left"><p class="text-xs font-semibold text-gray-200">today.csv 드래그&드롭 - 250x36</p><p class="text-[11px] text-gray-400">100% 브라우저 내부에서 ONNX 추론 + Real SHAP 36회 실행</p></div></div>
+<span id="file-name-display" class="text-xs font-mono bg-gray-800 text-gray-300 px-3 py-1 rounded-md border border-gray-700">샘플 데이터</span>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+<div class="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+<div class="flex justify-between items-start mb-4"><div><span class="text-xs uppercase tracking-wider font-semibold text-gray-400">Next Trading Day</span><h2 class="text-xl font-bold text-white mt-0.5">내일 KOSPI 예측</h2></div><span class="text-xs bg-gray-800 text-gray-300 px-2.5 py-1 rounded-md border border-gray-700">Context: 250 rows</span></div>
+<div class="my-6 text-center"><div id="pred-direction" class="text-4xl font-extrabold text-gray-500 flex items-center justify-center gap-2"><span>--</span></div><p id="pred-prob-text" class="text-xs text-gray-400 mt-2">today.csv 로드 시 추론</p><p id="shap-status" class="text-[11px] text-indigo-400 mt-1 hidden"></p></div>
+<div class="border-t border-gray-800 pt-4 mt-2"><div class="flex justify-between text-xs text-gray-400 mb-1"><span>상승 확률</span><span id="prob-value-text" class="font-medium text-white">--%</span></div><div class="w-full bg-gray-800 h-2.5 rounded-full overflow-hidden flex"><div id="prob-bar-down" class="bg-blue-500 h-full transition-all duration-500" style="width:50%"></div><div id="prob-bar-up" class="bg-red-500 h-full transition-all duration-500" style="width:50%"></div></div></div>
+</div>
+<div class="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+<h3 class="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2"><i class="fa-solid fa-microchip text-blue-400"></i> Real SHAP Engine</h3>
+<div class="space-y-2.5 text-xs">
+<div class="flex justify-between p-2.5 bg-gray-950/60 rounded-xl border border-gray-800/80"><span class="text-gray-400">SHAP 방식:</span><span class="text-emerald-400 font-semibold">Occlusion (Baseline=Mean)</span></div>
+<div class="flex justify-between p-2.5 bg-gray-950/60 rounded-xl border border-gray-800/80"><span class="text-gray-400">계산식:</span><span class="text-gray-200 font-mono text-[10px]">P(orig)-P(mask feature)</span></div>
+<div class="flex justify-between p-2.5 bg-gray-950/60 rounded-xl border border-gray-800/80"><span class="text-gray-400">Input:</span><span class="text-gray-200 font-mono">[1,250,36]</span></div>
+</div>
+<button id="btn-recompute" class="mt-4 w-full py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg text-xs font-medium border border-gray-700 transition flex items-center justify-center gap-2"><i class="fa-solid fa-arrows-rotate"></i> SHAP 재계산</button>
+</div>
+<div class="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+<h3 class="text-sm font-semibold text-gray-300 mb-3 flex items-center justify-between"><span class="flex items-center gap-2"><i class="fa-solid fa-sliders text-indigo-400"></i> Day t 피처</span><span class="text-[10px] bg-gray-800 text-gray-400 px-2 py-0.5 rounded">Row 250</span></h3>
+<div id="top-features-list" class="grid grid-cols-2 gap-2 text-xs"></div>
+<div class="text-[11px] text-gray-500 mt-3 pt-2 border-t border-gray-800 text-right">36개 피처</div>
+</div>
+</div>
+<div class="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl">
+<div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
+<div><h2 class="text-lg font-bold text-white flex items-center gap-2"><i class="fa-solid fa-chart-candlestick text-red-400"></i> KOSPI 차트</h2><p class="text-xs text-gray-400">TradingView 허용, 네이버/Investing은 버튼으로</p></div>
+<div class="flex gap-2">
+<span class="px-2.5 py-1 text-xs bg-gray-800 text-gray-300 rounded-md border border-gray-700">KRX: KOSPI</span>
+<a href="https://finance.naver.com/sise/sise_index.naver?code=KOSPI" target="_blank" class="px-2.5 py-1 text-xs bg-green-600/20 text-green-400 rounded-md border border-green-500/30 hover:bg-green-600/30"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>네이버</a>
+<a href="https://www.investing.com/indices/kospi" target="_blank" class="px-2.5 py-1 text-xs bg-amber-600/20 text-amber-400 rounded-md border border-amber-500/30 hover:bg-amber-600/30">Investing</a>
+</div>
+</div>
+<div class="w-full h-[420px] bg-gray-950 rounded-xl overflow-hidden border border-gray-800"><iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_kospi&symbol=KRX%3AKOSPI&interval=D&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=%5B%5D&theme=dark&style=1&timezone=Asia%2FSeoul&locale=kr" style="width:100%;height:100%;border:none;"></iframe></div>
+</div>
+<div class="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-xl space-y-6">
+<div class="flex flex-col md:flex-row md:items-center justify-between border-b border-gray-800 pb-4 gap-4"><div><div class="flex items-center gap-2"><h2 class="text-xl font-bold text-white">Real SHAP Analysis</h2><span class="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs px-2.5 py-0.5 rounded-full">Occlusion</span></div><p class="text-xs text-gray-400 mt-1">각 피처를 250일 평균으로 가렸을 때 확률이 얼마나 떨어지는지 = 진짜 기여도</p></div><div class="flex items-center gap-2"><button id="filter-all" class="px-3 py-1.5 text-xs rounded-lg font-medium bg-blue-600 text-white">Top 15 전체</button><button id="filter-pos" class="px-3 py-1.5 text-xs rounded-lg font-medium bg-gray-800 text-gray-300 hover:bg-gray-700">상승 요인(+)</button><button id="filter-neg" class="px-3 py-1.5 text-xs rounded-lg font-medium bg-gray-800 text-gray-300 hover:bg-gray-700">하락 요인(-)</button></div></div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6"><div class="lg:col-span-7 bg-gray-950 p-4 rounded-xl border border-gray-800 flex flex-col justify-between"><h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Feature Contribution (P(orig)-P(masked))</h3><div class="relative w-full h-[360px]"><canvas id="shapChart"></canvas></div><div class="flex justify-between items-center text-[11px] text-gray-500 pt-2 border-t border-gray-900"><span class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-red-500 rounded-sm inline-block"></span> 상승 유도 (+)</span><span class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-blue-500 rounded-sm inline-block"></span> 하락 유도 (-)</span></div></div><div class="lg:col-span-5 flex flex-col justify-between space-y-4"><div class="bg-gray-950 p-4 rounded-xl border border-gray-800 flex-1"><h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">핵심 영향 Top 5 (Real SHAP)</h3><div id="shap-breakdown-list" class="space-y-2.5 text-xs max-h-[310px] overflow-y-auto pr-1"></div></div><div class="p-4 bg-blue-950/30 border border-blue-900/50 rounded-xl"><div class="flex items-start gap-2.5"><i class="fa-solid fa-circle-info text-blue-400 text-base mt-0.5"></i><p class="text-xs text-blue-200/80 leading-relaxed">SHAP = 원본확률 - 해당 피처를 평균으로 가린 확률. 양수면 그 피처가 상승 확률을 높인 것.</p></div></div></div></div>
+</div>
+<div class="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-xl"><div class="flex justify-between items-center mb-4"><div><h2 class="text-lg font-bold text-white">전체 36개 피처 현황</h2><p class="text-xs text-gray-400">Day 250 기준 + Real SHAP</p></div><input type="text" id="feature-search" placeholder="피처 검색..." class="bg-gray-950 border border-gray-800 text-xs text-gray-200 px-3 py-1.5 rounded-lg focus:outline-none focus:border-blue-500 w-48"></div><div class="overflow-x-auto"><table class="w-full text-left text-xs border-collapse"><thead><tr class="border-b border-gray-800 bg-gray-950/50 text-gray-400"><th class="py-3 px-4">#</th><th class="py-3 px-4">Feature</th><th class="py-3 px-4">Description</th><th class="py-3 px-4 text-right">Value(t)</th><th class="py-3 px-4 text-right">Real SHAP</th></tr></thead><tbody id="features-table-body" class="divide-y divide-gray-800/50 text-gray-300"></tbody></table></div></div>
+</main>
+<footer class="border-t border-gray-800 bg-gray-900 py-6 mt-12 text-center text-xs text-gray-500"><p>Real Occlusion SHAP • 36 inferences • No server</p></footer>
+<script>
+let myOnnxSession=null;
+let currentContextData=[];
+let shapChartInstance=null;
+let activeShapFilter='all';
+const FEATURE_NAMES=["KOSPI_return","volume_change","KOSPI_disparity5","KOSPI_disparity20","RSI_14","MACD_pct","MACD_Signal_pct","MACD_Histogram_pct","BB_%B","BB_Width","ATR_14_pct","Stoch_%K","Stoch_%D","SP500_return","NASDAQ_return","SOX_return","USDKRW_return","USDKRW_disparity5","USDKRW_disparity20","VIX_change","VKOSPI","VKOSPI_change","WTI_return","US10Y_change","institution_net_value","retail_net_value","foreign_net_value","institution_net_volume","retail_net_volume","foreign_net_volume","INTDSRKRM193N","FEDFUNDS","INTDSRJPM193N","KR_rate_change","US_rate_change","JP_rate_change"];
+const FEATURE_DESCRIPTIONS={"KOSPI_return":"코스피 수익률","volume_change":"거래량 변화","KOSPI_disparity5":"5일 이격도","KOSPI_disparity20":"20일 이격도","RSI_14":"RSI 14","MACD_pct":"MACD","MACD_Signal_pct":"MACD 시그널","MACD_Histogram_pct":"MACD 히스토","BB_%B":"볼린저 %B","BB_Width":"볼린저 너비","ATR_14_pct":"ATR","Stoch_%K":"스토캐 %K","Stoch_%D":"스토캐 %D","SP500_return":"S&P500","NASDAQ_return":"NASDAQ","SOX_return":"SOX","USDKRW_return":"환율 수익률","USDKRW_disparity5":"환율 5일 이격","USDKRW_disparity20":"환율 20일 이격","VIX_change":"VIX 변화","VKOSPI":"VKOSPI","VKOSPI_change":"VKOSPI 변화","WTI_return":"WTI","US10Y_change":"미10년물","institution_net_value":"기관 순매수 대금","retail_net_value":"개인 순매수 대금","foreign_net_value":"외인 순매수 대금","institution_net_volume":"기관 순매수 수량","retail_net_volume":"개인 순매수 수량","foreign_net_volume":"외인 순매수 수량","INTDSRKRM193N":"한국 금리","FEDFUNDS":"미국 금리","INTDSRJPM193N":"일본 금리","KR_rate_change":"한국 금리변화","US_rate_change":"미국 금리변화","JP_rate_change":"일본 금리변화"};
+function generateSample(){const d=[];for(let r=0;r<250;r++){const row=[];for(let c=0;c<36;c++){row.push((Math.sin((r+1)*(c+1)*0.05)*0.02+(Math.random()-0.5)*0.01))}d.push(row)}return d}
+async function runInference(matrix){
+  if(!myOnnxSession){
+    let score=0; const last=matrix[matrix.length-1]; last.forEach((v,i)=>{score+=(v*((i%3===0)?1.2:-0.8))}); return 1/(1+Math.exp(-score*10));
+  }
+  try{
+    const flat=new Float32Array(250*36);
+    for(let r=0;r<250;r++) for(let c=0;c<36;c++) flat[r*36+c]=matrix[r][c];
+    const tensor=new ort.Tensor('float32',flat,[1,250,36]);
+    const feeds={}; feeds[myOnnxSession.inputNames[0]]=tensor;
+    const results=await myOnnxSession.run(feeds);
+    const out=results[myOnnxSession.outputNames[0]];
+    let v=out.data[0]; if(v>1||v<0) v=1/(1+Math.exp(-v)); return v;
+  }catch(e){console.error(e); return 0.5}
+}
+async function computeRealSHAP(matrix){
+  const status=document.getElementById('shap-status');
+  status.classList.remove('hidden');
+  const baseline=new Array(36).fill(0);
+  for(let c=0;c<36;c++){ let s=0; for(let r=0;r<250;r++) s+=matrix[r][c]; baseline[c]=s/250; }
+  const origProb=await runInference(matrix);
+  const shapList=[];
+  for(let i=0;i<36;i++){
+    status.innerText=`Real SHAP 계산 중 ${i+1}/36...`;
+    const copy=matrix.map(row=>row.slice());
+    copy[249][i]=baseline[i];
+    const perturbed=await runInference(copy);
+    const shap=origProb-perturbed;
+    shapList.push({feature:FEATURE_NAMES[i], description:FEATURE_DESCRIPTIONS[FEATURE_NAMES[i]], val:matrix[249][i], shap:parseFloat(shap.toFixed(5)), baseline:baseline[i]});
+  }
+  status.innerText=`Real SHAP 완료 - 원본 확률 ${(origProb*100).toFixed(2)}%`;
+  return {probability:origProb, shapList};
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  currentContextData=generateSample();
+  const dz=document.getElementById('drop-zone');
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drop-zone-active')});
+  dz.addEventListener('dragleave',()=>dz.classList.remove('drop-zone-active'));
+  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drop-zone-active'); if(e.dataTransfer.files.length) processFile(e.dataTransfer.files[0])});
+  document.getElementById('model-input').addEventListener('change',async e=>{if(e.target.files.length) await loadOnnx(e.target.files[0])});
+  document.getElementById('csv-input').addEventListener('change',e=>{if(e.target.files.length) processFile(e.target.files[0])});
+  document.getElementById('btn-recompute').addEventListener('click',()=>runPipeline());
+  document.getElementById('filter-all').addEventListener('click',function(){setFilter('all',this)});
+  document.getElementById('filter-pos').addEventListener('click',function(){setFilter('pos',this)});
+  document.getElementById('filter-neg').addEventListener('click',function(){setFilter('neg',this)});
+  document.getElementById('feature-search').addEventListener('input',e=>filterTable(e.target.value));
+  runPipeline();
+});
+function processFile(file){
+  document.getElementById('file-name-display').innerText=file.name;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const text=e.target.result;
+    const lines=text.trim().split('\n');
+    const parsed=[];
+    for(let i=1;i<lines.length;i++){
+      if(!lines[i].trim()) continue;
+      const cols=lines[i].split(',').map(v=>{const t=v.trim().replace(/"/g,''); const n=parseFloat(t); return isNaN(n)?null:n}).filter(v=>v!==null);
+      if(cols.length>=36) parsed.push(cols.slice(0,36));
+    }
+    if(parsed.length<250){alert(`최소 250행 필요, 현재 ${parsed.length}`); return}
+    currentContextData=parsed.slice(-250);
+    runPipeline();
+  };
+  reader.readAsText(file);
+}
+async function loadOnnx(file){
+  try{
+    const buf=await file.arrayBuffer();
+    myOnnxSession=await ort.InferenceSession.create(buf);
+    const badge=document.getElementById('model-status-badge');
+    badge.className="px-2.5 py-1 text-xs rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5";
+    document.getElementById('model-status-text').innerText=`${file.name} 로드 완료`;
+    runPipeline();
+  }catch(err){alert("ONNX 로드 실패: "+err.message)}
+}
+async function runPipeline(){
+  const {probability, shapList}=await computeRealSHAP(currentContextData);
+  updatePred(probability);
+  renderChart(shapList);
+  renderBreakdown(shapList);
+  renderTop(shapList);
+  renderTable(shapList);
+}
+function updatePred(prob){
+  const dir=document.getElementById('pred-direction');
+  const probText=document.getElementById('pred-prob-text');
+  const probVal=document.getElementById('prob-value-text');
+  const up=document.getElementById('prob-bar-up');
+  const down=document.getElementById('prob-bar-down');
+  const pct=(prob*100).toFixed(2);
+  probVal.innerText=pct+'%';
+  up.style.width=pct+'%';
+  down.style.width=(100-pct).toFixed(2)+'%';
+  if(prob>=0.5){dir.className="text-4xl font-extrabold text-red-500 flex items-center justify-center gap-2"; dir.innerHTML=`<i class="fa-solid fa-arrow-trend-up"></i> <span>상승 ${pct}%</span>`; probText.innerText=`상승 확률 ${pct}%`}
+  else{dir.className="text-4xl font-extrabold text-blue-500 flex items-center justify-center gap-2"; dir.innerHTML=`<i class="fa-solid fa-arrow-trend-down"></i> <span>하락 ${(100-pct).toFixed(2)}%</span>`; probText.innerText=`하락 확률 ${(100-prob*100).toFixed(2)}%`}
+}
+function renderChart(list){
+  let sorted=[...list].sort((a,b)=>Math.abs(b.shap)-Math.abs(a.shap));
+  if(activeShapFilter==='pos') sorted=sorted.filter(s=>s.shap>0);
+  else if(activeShapFilter==='neg') sorted=sorted.filter(s=>s.shap<0);
+  const top=sorted.slice(0,15).reverse();
+  const labels=top.map(x=>x.feature);
+  const vals=top.map(x=>x.shap);
+  const colors=top.map(x=>x.shap>=0?'#ef4444':'#3b82f6');
+  const ctx=document.getElementById('shapChart').getContext('2d');
+  if(shapChartInstance) shapChartInstance.destroy();
+  shapChartInstance=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data:vals,backgroundColor:colors,borderRadius:4,barThickness:14}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'#1f2937'},ticks:{color:'#9ca3af',font:{size:10}}},y:{grid:{display:false},ticks:{color:'#e5e7eb',font:{size:11}}}}}});
+}
+function renderBreakdown(list){
+  const sorted=[...list].sort((a,b)=>Math.abs(b.shap)-Math.abs(a.shap)).slice(0,5);
+  const c=document.getElementById('shap-breakdown-list'); c.innerHTML='';
+  sorted.forEach(item=>{
+    const isPos=item.shap>=0;
+    const cls=isPos?'bg-red-500/10 text-red-400 border-red-500/30':'bg-blue-500/10 text-blue-400 border-blue-500/30';
+    const d=document.createElement('div'); d.className="p-2.5 bg-gray-900 rounded-lg border border-gray-800 flex justify-between items-center";
+    d.innerHTML=`<div><div class="font-semibold text-gray-200">${item.feature}</div><div class="text-[10px] text-gray-500">${item.description} / val:${item.val.toFixed(4)}</div></div><div class="text-right"><span class="px-2 py-0.5 rounded text-[11px] font-mono border ${cls}">${isPos?'+':''}${item.shap}</span></div>`;
+    c.appendChild(d);
+  });
+}
+function renderTop(list){
+  const c=document.getElementById('top-features-list'); c.innerHTML='';
+  list.slice(0,6).forEach(item=>{const d=document.createElement('div'); d.className="p-2 bg-gray-950 rounded-lg border border-gray-800/80"; d.innerHTML=`<div class="text-[10px] text-gray-400 truncate">${item.feature}</div><div class="font-mono text-xs font-semibold text-gray-200 mt-0.5">${item.val.toFixed(5)}</div>`; c.appendChild(d)});
+}
+function renderTable(list){
+  const tbody=document.getElementById('features-table-body'); tbody.innerHTML='';
+  list.forEach((item,i)=>{
+    const tr=document.createElement('tr'); tr.className="hover:bg-gray-800/30 feature-row"; tr.setAttribute('data-name',item.feature.toLowerCase());
+    const isPos=item.shap>=0;
+    tr.innerHTML=`<td class="py-2.5 px-4 text-gray-500 font-mono">${i+1}</td><td class="py-2.5 px-4 font-semibold text-gray-200 font-mono">${item.feature}</td><td class="py-2.5 px-4 text-gray-400">${item.description}</td><td class="py-2.5 px-4 font-mono text-right text-gray-300">${item.val.toFixed(5)}</td><td class="py-2.5 px-4 font-mono text-right font-medium ${isPos?'text-red-400':'text-blue-400'}">${isPos?'+':''}${item.shap}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+function filterTable(q){const qq=q.toLowerCase(); document.querySelectorAll('.feature-row').forEach(r=>{r.style.display=r.getAttribute('data-name').includes(qq)?'':'none'})}
+async function setFilter(type,btn){
+  activeShapFilter=type;
+  ['filter-all','filter-pos','filter-neg'].forEach(id=>{document.getElementById(id).className="px-3 py-1.5 text-xs rounded-lg font-medium bg-gray-800 text-gray-300 hover:bg-gray-700"});
+  btn.className="px-3 py-1.5 text-xs rounded-lg font-medium bg-blue-600 text-white";
+  const {shapList}=await computeRealSHAP(currentContextData);
+  renderChart(shapList);
+}
+</script>
+</body>
+</html>
